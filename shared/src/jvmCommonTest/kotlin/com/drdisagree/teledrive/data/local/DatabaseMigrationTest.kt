@@ -26,7 +26,7 @@ import org.junit.Test
 class DatabaseMigrationTest {
 
     @Test
-    fun `a version 12 database upgrades and keeps its rows`() {
+    fun `a version 11 database upgrades and keeps its rows`() {
         val file = File.createTempFile("teledrive", ".db")
         try {
             runBlocking {
@@ -59,7 +59,7 @@ class DatabaseMigrationTest {
         val file = File.createTempFile("teledrive", ".db")
         try {
             runBlocking {
-                createSchema(file, SWAPPED_VERSION)
+                createSchema(file, FROM_VERSION)
                 seedMislaidIds(file)
 
                 val upgraded = openDatabase(file)
@@ -159,8 +159,7 @@ class DatabaseMigrationTest {
     }
 
     private companion object {
-        const val FROM_VERSION = 12
-        const val SWAPPED_VERSION = 14
+        const val FROM_VERSION = 11
         const val TABLE_NAME_PLACEHOLDER = "\${TABLE_NAME}"
         const val STABLE_ID = "AgAD1SAAAmsw2FU"
         const val REMOTE_ID = "BQACAgUAAyEFAAMBC6dFxAACBztq"
