@@ -2,28 +2,15 @@ package com.drdisagree.teledrive.presentation.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.drdisagree.teledrive.resources.settings_free_up_none
-import com.drdisagree.teledrive.resources.files_removed_local_copies
-import com.drdisagree.teledrive.resources.settings_nothing_to_remove
-import com.drdisagree.teledrive.resources.Res
-import com.drdisagree.teledrive.resources.about_no_update
-import com.drdisagree.teledrive.resources.message_backing_up_new_folder
-import com.drdisagree.teledrive.resources.message_cache_cleared
-import com.drdisagree.teledrive.resources.message_key_backup_saved
-import com.drdisagree.teledrive.resources.message_key_restored
-import com.drdisagree.teledrive.resources.message_rebuild_done
-import com.drdisagree.teledrive.resources.message_thumbnails_cleared
-import com.drdisagree.teledrive.resources.message_wrong_passphrase
-import com.drdisagree.teledrive.resources.rebuild_locked_files
-import com.drdisagree.teledrive.core.files.DeleteConsentRequest
 import com.drdisagree.teledrive.core.common.AppResult
+import com.drdisagree.teledrive.core.files.DeleteConsentRequest
 import com.drdisagree.teledrive.core.permissions.PermissionChecker
 import com.drdisagree.teledrive.core.security.AppLockManager
 import com.drdisagree.teledrive.core.telegram.TelegramClient
-import com.drdisagree.teledrive.core.telegram.TelegramConnectionState
 import com.drdisagree.teledrive.core.telegram.TelegramUser
 import com.drdisagree.teledrive.core.transfer.MaintenanceScheduler
 import com.drdisagree.teledrive.core.transfer.TransferScheduler
+import com.drdisagree.teledrive.core.update.UpdateChecker
 import com.drdisagree.teledrive.data.repository.LocalDataWiper
 import com.drdisagree.teledrive.domain.model.BackupTrigger
 import com.drdisagree.teledrive.domain.model.DriveChannel
@@ -38,6 +25,19 @@ import com.drdisagree.teledrive.domain.repository.SyncRepository
 import com.drdisagree.teledrive.domain.repository.TelegramAuthRepository
 import com.drdisagree.teledrive.presentation.common.UiText
 import com.drdisagree.teledrive.presentation.common.toUiText
+import com.drdisagree.teledrive.resources.Res
+import com.drdisagree.teledrive.resources.about_no_update
+import com.drdisagree.teledrive.resources.files_removed_local_copies
+import com.drdisagree.teledrive.resources.message_backing_up_new_folder
+import com.drdisagree.teledrive.resources.message_cache_cleared
+import com.drdisagree.teledrive.resources.message_key_backup_saved
+import com.drdisagree.teledrive.resources.message_key_restored
+import com.drdisagree.teledrive.resources.message_rebuild_done
+import com.drdisagree.teledrive.resources.message_thumbnails_cleared
+import com.drdisagree.teledrive.resources.message_wrong_passphrase
+import com.drdisagree.teledrive.resources.rebuild_locked_files
+import com.drdisagree.teledrive.resources.settings_free_up_none
+import com.drdisagree.teledrive.resources.settings_nothing_to_remove
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
@@ -55,23 +55,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.drdisagree.teledrive.core.update.AppRelease
-import com.drdisagree.teledrive.core.update.UpdateChecker
-
-sealed interface UpdateState {
-    data object Idle : UpdateState
-    data object Checking : UpdateState
-    data class Available(val release: AppRelease) : UpdateState
-}
-
-data class SettingsUiState(
-    val preferences: UserPreferences = UserPreferences(),
-    val user: TelegramUser? = null,
-    val connection: TelegramConnectionState = TelegramConnectionState.CONNECTING,
-    val cacheStats: CacheRepository.CacheStats = CacheRepository.CacheStats(0, 0, 0, 0, 0),
-    val syncing: Boolean = false,
-    val loading: Boolean = true
-)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModel(
@@ -138,7 +121,10 @@ class SettingsViewModel(
             if (current.linkPreviews != previous.linkPreviews) {
                 cacheRepository.clearLinkThumbnails()
             }
-            if (current.allowMeteredTransfers != previous.allowMeteredTransfers) {
+            if (current.allowMeteredTransfers != previous.allowMeteredTransfers ||
+                current.backupChargingOnly != previous.backupChargingOnly ||
+                current.backupWifiOnly != previous.backupWifiOnly
+            ) {
                 transferScheduler.rekick(current.allowMeteredTransfers)
             }
             if (current.updateCheckEnabled != previous.updateCheckEnabled) {
@@ -171,7 +157,6 @@ class SettingsViewModel(
         )
     }
 
-    /** Backup folders belong to the active drive, not to the device. */
     private val activeDrive: Flow<DriveChannel?> = settingsRepository.preferences
         .map { it.storageChatId }
         .distinctUntilChanged()
@@ -181,7 +166,8 @@ class SettingsViewModel(
             }
         }
 
-    val backupFolders: StateFlow<Set<String>> = activeDrive        .map { it?.backupFolders.orEmpty() }
+    val backupFolders: StateFlow<Set<String>> = activeDrive
+        .map { it?.backupFolders.orEmpty() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     val cleanupFolders: StateFlow<Set<String>> = activeDrive
@@ -239,8 +225,8 @@ class SettingsViewModel(
     }
 
     /**
-     * Saves the key backup and only then turns encryption on, so uploads can
-     * never be sealed with a key the user has no way to recover.
+     * Turns encryption on only after the key backup is saved, so nothing is sealed with an
+     * unrecoverable key.
      */
     fun backUpEncryptionKey(passphrase: String, hint: String, enableEncryption: Boolean) {
         _keyBackupWorking.value = true
@@ -266,7 +252,7 @@ class SettingsViewModel(
         }
     }
 
-    /** Only callable once a key backup exists; see [backUpEncryptionKey]. */
+    /** Only callable once a key backup exists. */
     fun enableEncryption() {
         update { it.copy(encryptFiles = true) }
     }
@@ -278,7 +264,6 @@ class SettingsViewModel(
     private val _keyHint = MutableStateFlow<KeyHint>(KeyHint.Unknown)
     val keyHint: StateFlow<KeyHint> = _keyHint.asStateFlow()
 
-    /** Reads the stored hint so a forgotten passphrase has something to go on. */
     fun loadKeyHint() {
         _keyHint.value = KeyHint.Loading
         viewModelScope.launch {
@@ -316,7 +301,6 @@ class SettingsViewModel(
     private val _deleteConsentRequests = MutableSharedFlow<DeleteConsentRequest>(extraBufferCapacity = 1)
     val deleteConsentRequests = _deleteConsentRequests.asSharedFlow()
 
-    /** Files indexed so far, so a long rebuild shows movement. */
     val indexedSoFar: StateFlow<Int> = syncRepository.indexedSoFar
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
@@ -405,7 +389,6 @@ class SettingsViewModel(
             }
         }
     }
-
 
     fun logout(onLoggedOut: () -> Unit) {
         viewModelScope.launch {

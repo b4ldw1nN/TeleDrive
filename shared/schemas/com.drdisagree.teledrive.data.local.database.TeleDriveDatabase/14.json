@@ -1,12 +1,12 @@
 {
   "formatVersion": 1,
   "database": {
-    "version": 12,
-    "identityHash": "c8881a90fbd45f78b0b959c28e0ad7b9",
+    "version": 14,
+    "identityHash": "cbe35e46aaa9be52e54a008c9f6473c5",
     "entities": [
       {
         "tableName": "files",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `folderId` TEXT, `name` TEXT NOT NULL, `sizeBytes` INTEGER NOT NULL, `mimeType` TEXT NOT NULL, `category` TEXT NOT NULL, `localPath` TEXT, `contentHash` TEXT, `chatId` INTEGER, `messageId` INTEGER, `remoteFileId` TEXT, `remoteUniqueId` TEXT, `backupState` TEXT NOT NULL, `isHidden` INTEGER NOT NULL, `isArchived` INTEGER NOT NULL, `isFavorite` INTEGER NOT NULL, `isPinned` INTEGER NOT NULL, `isEncrypted` INTEGER NOT NULL, `width` INTEGER, `height` INTEGER, `durationMs` INTEGER, `trashedAt` INTEGER, `preTrashFolderId` TEXT, `pendingPublish` INTEGER NOT NULL, `partCount` INTEGER NOT NULL, `iconFileId` TEXT, `createdAt` INTEGER NOT NULL, `modifiedAt` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`folderId`) REFERENCES `folders`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `folderId` TEXT, `name` TEXT NOT NULL, `sizeBytes` INTEGER NOT NULL, `mimeType` TEXT NOT NULL, `category` TEXT NOT NULL, `localPath` TEXT, `contentHash` TEXT, `chatId` INTEGER, `messageId` INTEGER, `remoteFileId` TEXT, `remoteUniqueId` TEXT, `backupState` TEXT NOT NULL, `isHidden` INTEGER NOT NULL, `isArchived` INTEGER NOT NULL, `isFavorite` INTEGER NOT NULL, `isAvailableOffline` INTEGER NOT NULL, `isEncrypted` INTEGER NOT NULL, `width` INTEGER, `height` INTEGER, `durationMs` INTEGER, `trashedAt` INTEGER, `preTrashFolderId` TEXT, `pendingPublish` INTEGER NOT NULL, `partCount` INTEGER NOT NULL, `iconFileId` TEXT, `createdAt` INTEGER NOT NULL, `modifiedAt` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`folderId`) REFERENCES `folders`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
         "fields": [
           {
             "fieldPath": "id",
@@ -98,8 +98,8 @@
             "notNull": true
           },
           {
-            "fieldPath": "isPinned",
-            "columnName": "isPinned",
+            "fieldPath": "isAvailableOffline",
+            "columnName": "isAvailableOffline",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -275,7 +275,7 @@
       },
       {
         "tableName": "folders",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `chatId` INTEGER, `parentId` TEXT, `name` TEXT NOT NULL, `isHidden` INTEGER NOT NULL, `isArchived` INTEGER NOT NULL, `isFavorite` INTEGER NOT NULL, `isPinned` INTEGER NOT NULL, `trashedAt` INTEGER, `preTrashParentId` TEXT, `pendingPublish` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `modifiedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`parentId`) REFERENCES `folders`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `chatId` INTEGER, `parentId` TEXT, `name` TEXT NOT NULL, `isHidden` INTEGER NOT NULL, `isArchived` INTEGER NOT NULL, `isFavorite` INTEGER NOT NULL, `isAvailableOffline` INTEGER NOT NULL, `trashedAt` INTEGER, `preTrashParentId` TEXT, `pendingPublish` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `modifiedAt` INTEGER NOT NULL, `changedAt` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`parentId`) REFERENCES `folders`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
             "fieldPath": "id",
@@ -318,8 +318,8 @@
             "notNull": true
           },
           {
-            "fieldPath": "isPinned",
-            "columnName": "isPinned",
+            "fieldPath": "isAvailableOffline",
+            "columnName": "isAvailableOffline",
             "affinity": "INTEGER",
             "notNull": true
           },
@@ -348,6 +348,12 @@
           {
             "fieldPath": "modifiedAt",
             "columnName": "modifiedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "changedAt",
+            "columnName": "changedAt",
             "affinity": "INTEGER",
             "notNull": true
           }
@@ -927,7 +933,7 @@
       },
       {
         "tableName": "storage_channels",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`chatId` INTEGER NOT NULL, `title` TEXT NOT NULL, `backupFolders` TEXT NOT NULL, `cleanupFolders` TEXT NOT NULL, `photoPath` TEXT, `defaultsSeeded` INTEGER NOT NULL, `remoteFileCount` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL, `lastOpenedAt` INTEGER NOT NULL, PRIMARY KEY(`chatId`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`chatId` INTEGER NOT NULL, `title` TEXT NOT NULL, `backupFolders` TEXT NOT NULL, `photoPath` TEXT, `defaultsSeeded` INTEGER NOT NULL, `remoteFileCount` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL, `lastOpenedAt` INTEGER NOT NULL, PRIMARY KEY(`chatId`))",
         "fields": [
           {
             "fieldPath": "chatId",
@@ -944,12 +950,6 @@
           {
             "fieldPath": "backupFolders",
             "columnName": "backupFolders",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "cleanupFolders",
-            "columnName": "cleanupFolders",
             "affinity": "TEXT",
             "notNull": true
           },
@@ -1172,11 +1172,40 @@
             "id"
           ]
         }
+      },
+      {
+        "tableName": "folder_tombstones",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `chatId` INTEGER, `deletedAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatId",
+            "columnName": "chatId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "deletedAt",
+            "columnName": "deletedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c8881a90fbd45f78b0b959c28e0ad7b9')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'cbe35e46aaa9be52e54a008c9f6473c5')"
     ]
   }
 }

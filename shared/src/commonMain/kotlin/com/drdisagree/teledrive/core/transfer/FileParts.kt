@@ -1,12 +1,12 @@
 package com.drdisagree.teledrive.core.transfer
 
-/** Sizing and naming rules shared by everything that handles a split file. */
+import com.drdisagree.teledrive.data.remote.telegram.RemoteFileManifest
+
 object FileParts {
 
     /**
-     * Telegram accepts 2 GB per file, 4 GB with Premium. Parts are far smaller
-     * than the cap on purpose: an interrupted upload only loses the part in
-     * flight, and a player seeking into a file only fetches the part it lands in.
+     * Far below the cap, so an interrupted upload loses only one part and a seek fetches only the
+     * part it lands in.
      */
     const val PART_SIZE: Long = 512L * 1024 * 1024
 
@@ -28,4 +28,15 @@ object FileParts {
         name + "." + (partIndex + 1).toString().padStart(3, '0')
 
     fun splits(sizeBytes: Long, limitBytes: Long): Boolean = sizeBytes > limitBytes
+
+    fun asFirstPart(
+        manifest: RemoteFileManifest,
+        partCount: Int = countFor(manifest.sizeBytes)
+    ): RemoteFileManifest = manifest.copy(
+        version = RemoteFileManifest.PART_VERSION,
+        partCount = partCount,
+        partIndex = 0,
+        partOffset = offsetOf(0),
+        partSize = sizeOf(0, manifest.sizeBytes)
+    )
 }

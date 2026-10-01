@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
@@ -28,10 +28,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.drdisagree.teledrive.resources.Res
 import com.drdisagree.teledrive.resources.common_content_description_favorite
-import com.drdisagree.teledrive.resources.common_content_description_pinned
+import com.drdisagree.teledrive.resources.common_content_description_available_offline
 import com.drdisagree.teledrive.domain.model.DriveFolder
 
-/** Folder tile matching [FileGridItem] so grid view stays visually uniform. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FolderGridItem(
@@ -81,12 +80,12 @@ fun FolderGridItem(
                         tint = MaterialTheme.colorScheme.tertiary
                     )
                 }
-                if (folder.isPinned) {
+                if (folder.isAvailableOffline) {
                     Spacer(Modifier.width(6.dp))
                     Icon(
-                        imageVector = Icons.Filled.PushPin,
+                        imageVector = Icons.Filled.OfflinePin,
                         contentDescription = stringResource(
-                            Res.string.common_content_description_pinned
+                            Res.string.common_content_description_available_offline
                         ),
                         modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.secondary

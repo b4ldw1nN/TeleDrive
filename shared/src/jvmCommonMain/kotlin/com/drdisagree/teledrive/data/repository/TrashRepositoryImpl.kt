@@ -12,9 +12,11 @@ import com.drdisagree.teledrive.data.local.dao.BackupDao
 import com.drdisagree.teledrive.data.local.dao.FileDao
 import com.drdisagree.teledrive.data.local.dao.FilePartDao
 import com.drdisagree.teledrive.data.local.dao.FolderDao
+import com.drdisagree.teledrive.data.local.dao.FolderTombstoneDao
 import com.drdisagree.teledrive.data.local.dao.PendingDeleteDao
 import com.drdisagree.teledrive.data.local.dao.ThumbnailDao
 import com.drdisagree.teledrive.data.local.entity.PendingDeleteEntity
+import com.drdisagree.teledrive.data.local.entity.FolderTombstoneEntity
 import com.drdisagree.teledrive.data.mapper.toDomain
 import com.drdisagree.teledrive.domain.model.TrashItem
 import com.drdisagree.teledrive.domain.repository.TransferRepository
@@ -38,7 +40,8 @@ class TrashRepositoryImpl(
     private val pendingDeleteDao: PendingDeleteDao,
     private val filePartDao: FilePartDao,
     private val activeChannel: ActiveChannel,
-    private val transferRepository: TransferRepository
+    private val transferRepository: TransferRepository,
+    private val tombstoneDao: FolderTombstoneDao
 ) : TrashRepository {
 
     override fun observeTrash(): Flow<List<TrashItem>> =
@@ -133,7 +136,8 @@ class TrashRepositoryImpl(
     override suspend fun restoreFolder(id: String): AppResult<Unit> {
         val folderIds = collectTrashedDescendantFolderIds(id)
         val fileIds = fileDao.trashedInFolders(folderIds).map { it.id }
-        folderIds.reversed().forEach { folderDao.restoreFromTrash(it) }
+        val restoredAt = System.currentTimeMillis()
+        folderIds.reversed().forEach { folderDao.restoreFromTrash(it, restoredAt) }
         restoreAncestors(folderDao.byId(id)?.parentId)
         val restoredParent = folderDao.byId(id)?.parentId
         if (restoredParent != null && folderDao.byId(restoredParent) == null) {
@@ -216,16 +220,20 @@ class TrashRepositoryImpl(
         val fileIds = fileDao.trashedInFolders(folderIds).map { it.id }
         val result = deleteFilesPermanently(fileIds)
         if (result is AppResult.Failure) return result
+        recordDeleted(folderIds)
         folderIds.reversed().forEach { folderDao.delete(it) }
         markFolderStateDirty()
         return AppResult.Success(Unit)
     }
 
-    /**
-     * Import staging copies live in app storage and only exist to feed the
-     * uploader, so a permanent delete removes them. Files the user keeps
-     * elsewhere on the device are never touched here.
-     */
+    private suspend fun recordDeleted(folderIds: List<String>) {
+        if (folderIds.isEmpty()) return
+        val chatId = activeChannel.id()
+        val deletedAt = System.currentTimeMillis()
+        tombstoneDao.upsert(folderIds.map { FolderTombstoneEntity(it, chatId, deletedAt) })
+    }
+
+    /** Only staging copies the app made are removed; the user's own files are never touched. */
     private fun deleteStagedCopy(file: File) {
         val staging = File(storagePaths.filesDir, IMPORT_DIR)
         if (!file.absolutePath.startsWith(staging.absolutePath + File.separator)) return
@@ -242,6 +250,7 @@ class TrashRepositoryImpl(
         }
         if (failure != null) return failure
         val folders = folderDao.trashOlderThan(Long.MAX_VALUE)
+        recordDeleted(folders.map { it.id })
         folders.forEach { folderDao.delete(it.id) }
         if (folders.isNotEmpty()) markFolderStateDirty()
         return AppResult.Success(Unit)
@@ -254,16 +263,13 @@ class TrashRepositoryImpl(
         val result = deleteFilesPermanently(files.map { it.id })
         if (result is AppResult.Failure) return result
         val folders = folderDao.trashOlderThan(threshold)
+        recordDeleted(folders.map { it.id })
         folders.forEach { folderDao.delete(it.id) }
         if (folders.isNotEmpty()) markFolderStateDirty()
         return AppResult.Success(files.size + folders.size)
     }
 
-    /**
-     * Brings back every trashed folder above the restored item so it lands
-     * where it came from. A folder whose parent row is gone for good falls back
-     * to the drive root, because there is nothing left to describe it.
-     */
+    /** A folder whose parent row is gone for good falls back to the drive root. */
     private suspend fun restoreAncestors(folderId: String?) {
         var cursor = folderId
         var guard = 0
@@ -271,7 +277,7 @@ class TrashRepositoryImpl(
             val folder = folderDao.byId(cursor) ?: return
             if (folder.trashedAt == null) return
             val parentId = folder.preTrashParentId
-            folderDao.restoreFromTrash(cursor)
+            folderDao.restoreFromTrash(cursor, System.currentTimeMillis())
             if (parentId != null && folderDao.byId(parentId) == null) {
                 folderDao.move(cursor, null, System.currentTimeMillis())
                 return

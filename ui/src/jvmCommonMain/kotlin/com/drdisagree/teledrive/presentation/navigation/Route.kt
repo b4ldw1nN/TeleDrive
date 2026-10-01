@@ -24,8 +24,8 @@ sealed interface Route {
 
     @Serializable
     /**
-     * [fileId] opens the viewer; the rest reproduce the exact list the grid
-     * showed, so paging sideways follows the same order the user saw.
+     * The fields besides [fileId] reproduce the grid's list, so paging sideways keeps the order the
+     * user saw.
      */
     data class Preview(
         val fileId: String,
@@ -35,6 +35,7 @@ sealed interface Route {
         val nameQuery: String? = null,
         val categories: String? = null,
         val favoritesOnly: Boolean = false,
+        val availableOfflineOnly: Boolean = false,
         val hiddenOnly: Boolean = false,
         val archivedOnly: Boolean = false,
         val sortField: String? = null,

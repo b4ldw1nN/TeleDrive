@@ -151,12 +151,17 @@ interface FileDao {
     suspend fun byRemoteUniqueIds(uniqueIds: List<String>): List<FileEntity>
 
     /**
-     * The home screen needs every headline number at once, and separate
-     * observed queries each rescan the table on any write. One pass keeps a
-     * large library from saturating the query executors during a backup.
+     * One pass for every home screen number: separate observed queries each rescan the table on any
+     * write.
      */
     @Query(
-        """SELECT COUNT(*) AS total,
+        """WITH RECURSIVE offline_folders(id) AS (
+               SELECT id FROM folders WHERE isAvailableOffline = 1
+               UNION
+               SELECT folders.id FROM folders
+               JOIN offline_folders ON folders.parentId = offline_folders.id
+           )
+           SELECT COUNT(*) AS total,
                   COALESCE(SUM(CASE WHEN messageId IS NOT NULL THEN sizeBytes END), 0)
                       AS remoteBytes,
                   COALESCE(SUM(CASE WHEN backupState = 'BACKED_UP' THEN 1 END), 0)
@@ -166,7 +171,13 @@ interface FileDao {
                   COALESCE(SUM(
                       CASE WHEN localPath IS NOT NULL AND messageId IS NULL
                                 AND backupState IN ('NONE', 'FAILED') THEN 1 END
-                  ), 0) AS localOnly
+                  ), 0) AS localOnly,
+                  COALESCE(SUM(
+                      CASE WHEN localPath IS NOT NULL
+                                AND (isAvailableOffline = 1
+                                     OR folderId IN (SELECT id FROM offline_folders))
+                           THEN sizeBytes END
+                  ), 0) AS offlineBytes
            FROM files
            WHERE trashedAt IS NULL AND chatId IS :chatId"""
     )
@@ -182,42 +193,60 @@ interface FileDao {
     suspend fun setFavorite(ids: List<String>, favorite: Boolean)
 
     @Query(
-        """WITH RECURSIVE pinned_folders(id) AS (
-               SELECT id FROM folders WHERE isPinned = 1
+        """WITH RECURSIVE offline_folders(id) AS (
+               SELECT id FROM folders WHERE isAvailableOffline = 1
                UNION
                SELECT folders.id FROM folders
-               JOIN pinned_folders ON folders.parentId = pinned_folders.id
+               JOIN offline_folders ON folders.parentId = offline_folders.id
            )
            SELECT EXISTS(
                SELECT 1 FROM files
                WHERE id = :id
-                 AND (isPinned = 1
+                 AND (isAvailableOffline = 1
                       OR (folderId IS NOT NULL
-                          AND folderId IN (SELECT id FROM pinned_folders)))
+                          AND folderId IN (SELECT id FROM offline_folders)))
            )"""
     )
     suspend fun isKeptOffline(id: String): Boolean
 
     @Query(
-        """WITH RECURSIVE pinned_folders(id) AS (
-               SELECT id FROM folders WHERE isPinned = 1
+        """WITH RECURSIVE offline_folders(id) AS (
+               SELECT id FROM folders WHERE isAvailableOffline = 1
                UNION
                SELECT folders.id FROM folders
-               JOIN pinned_folders ON folders.parentId = pinned_folders.id
+               JOIN offline_folders ON folders.parentId = offline_folders.id
            )
            SELECT id FROM files
            WHERE id IN (:ids)
-             AND (isPinned = 1
+             AND (isAvailableOffline = 1
                   OR (folderId IS NOT NULL
-                      AND folderId IN (SELECT id FROM pinned_folders)))"""
+                      AND folderId IN (SELECT id FROM offline_folders)))"""
     )
     suspend fun keptOfflineIds(ids: List<String>): List<String>
+
+    @Query(
+        """WITH RECURSIVE offline_folders(id) AS (
+               SELECT id FROM folders WHERE isAvailableOffline = 1
+               UNION
+               SELECT folders.id FROM folders
+               JOIN offline_folders ON folders.parentId = offline_folders.id
+           )
+           SELECT id FROM files
+           WHERE localPath IS NULL
+             AND messageId IS NOT NULL
+             AND trashedAt IS NULL
+             AND chatId IS :chatId
+             AND (isAvailableOffline = 1
+                  OR (folderId IS NOT NULL
+                      AND folderId IN (SELECT id FROM offline_folders)))"""
+    )
+    fun observeAvailableOfflineMissingIds(chatId: Long?): Flow<List<String>>
 
     @Query("UPDATE files SET contentHash = :contentHash WHERE id = :id")
     suspend fun setContentHash(id: String, contentHash: String)
 
-    @Query("UPDATE files SET isPinned = :pinned WHERE id IN (:ids)")
-    suspend fun setPinned(ids: List<String>, pinned: Boolean)
+    @Query("UPDATE files SET isAvailableOffline = :available WHERE id IN (:ids)")
+    suspend fun setAvailableOffline(ids: List<String>, available: Boolean)
 
     @Query("UPDATE files SET isHidden = :hidden WHERE id IN (:ids)")
     suspend fun setHidden(ids: List<String>, hidden: Boolean)
@@ -232,8 +261,8 @@ interface FileDao {
     suspend fun setBackupStates(ids: List<String>, state: BackupState)
 
     /**
-     * Transfer bookkeeping must never claim a file is unsaved while its copy
-     * still sits in the channel, so downgrades only apply to local-only rows.
+     * Only local-only rows are downgraded, so a file is never shown unsaved while its copy is in
+     * the channel.
      */
     @Query("UPDATE files SET backupState = :state WHERE id = :id AND messageId IS NULL")
     suspend fun setBackupStateIfLocalOnly(id: String, state: BackupState)
@@ -356,60 +385,56 @@ interface FileDao {
     suspend fun allLocalPaths(): List<String>
 
     @Query(
-        """WITH RECURSIVE pinned_folders(id) AS (
-               SELECT id FROM folders WHERE isPinned = 1
+        """WITH RECURSIVE offline_folders(id) AS (
+               SELECT id FROM folders WHERE isAvailableOffline = 1
                UNION
                SELECT folders.id FROM folders
-               JOIN pinned_folders ON folders.parentId = pinned_folders.id
+               JOIN offline_folders ON folders.parentId = offline_folders.id
            )
            SELECT COALESCE(SUM(sizeBytes), 0) FROM files
            WHERE localPath IS NOT NULL
              AND messageId IS NOT NULL
              AND backupState = 'BACKED_UP'
              AND chatId IS :chatId
-             AND isPinned = 0
-             AND (folderId IS NULL OR folderId NOT IN (SELECT id FROM pinned_folders))"""
+             AND isAvailableOffline = 0
+             AND (folderId IS NULL OR folderId NOT IN (SELECT id FROM offline_folders))"""
     )
     fun observeReclaimableBytes(chatId: Long?): Flow<Long>
 
     @Query(
-        """WITH RECURSIVE pinned_folders(id) AS (
-               SELECT id FROM folders WHERE isPinned = 1
+        """WITH RECURSIVE offline_folders(id) AS (
+               SELECT id FROM folders WHERE isAvailableOffline = 1
                UNION
                SELECT folders.id FROM folders
-               JOIN pinned_folders ON folders.parentId = pinned_folders.id
+               JOIN offline_folders ON folders.parentId = offline_folders.id
            )
            SELECT id FROM files
            WHERE localPath IS NOT NULL
              AND messageId IS NOT NULL
              AND backupState = 'BACKED_UP'
              AND chatId IS :chatId
-             AND isPinned = 0
-             AND (folderId IS NULL OR folderId NOT IN (SELECT id FROM pinned_folders))"""
+             AND isAvailableOffline = 0
+             AND (folderId IS NULL OR folderId NOT IN (SELECT id FROM offline_folders))"""
     )
     suspend fun reclaimableFileIds(chatId: Long?): List<String>
 
     @Query(
-        """WITH RECURSIVE pinned_folders(id) AS (
-               SELECT id FROM folders WHERE isPinned = 1
+        """WITH RECURSIVE offline_folders(id) AS (
+               SELECT id FROM folders WHERE isAvailableOffline = 1
                UNION
                SELECT folders.id FROM folders
-               JOIN pinned_folders ON folders.parentId = pinned_folders.id
+               JOIN offline_folders ON folders.parentId = offline_folders.id
            )
            SELECT id, localPath FROM files
            WHERE localPath IS NOT NULL
              AND messageId IS NOT NULL
              AND backupState = 'BACKED_UP'
-             AND isPinned = 0
-             AND (folderId IS NULL OR folderId NOT IN (SELECT id FROM pinned_folders))"""
+             AND isAvailableOffline = 0
+             AND (folderId IS NULL OR folderId NOT IN (SELECT id FROM offline_folders))"""
     )
     suspend fun reclaimableLocalCopies(): List<LocalCopyRef>
 
-    /**
-     * Held only on this device: never uploaded, or canceled or failed on the
-     * way up. A backup scan walks device folders and never sees these, so they
-     * need queueing by id.
-     */
+    /** A backup scan only walks device folders, so these need queueing by id. */
     @Query(
         """SELECT id FROM files
            WHERE trashedAt IS NULL

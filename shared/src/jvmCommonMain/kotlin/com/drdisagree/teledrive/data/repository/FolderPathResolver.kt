@@ -1,19 +1,19 @@
 package com.drdisagree.teledrive.data.repository
 
 import com.drdisagree.teledrive.data.local.dao.FolderDao
+import com.drdisagree.teledrive.data.local.dao.FolderTombstoneDao
 import com.drdisagree.teledrive.data.local.entity.FolderEntity
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
 /**
- * Maps between folder ids and slash-separated paths used in remote manifests.
- * Creating missing segments is serialized to avoid duplicate folders when the
- * sync engine and uploads race.
+ * Creating missing segments is serialized so sync and uploads cannot race into duplicate folders.
  */
 class FolderPathResolver(
     private val folderDao: FolderDao,
-    private val activeChannel: ActiveChannel
+    private val activeChannel: ActiveChannel,
+    private val tombstoneDao: FolderTombstoneDao
 ) {
 
     private val creationMutex = Mutex()
@@ -31,7 +31,6 @@ class FolderPathResolver(
         return segments.joinToString("/")
     }
 
-    /** Resolves a path without creating anything. Null when it does not exist. */
     suspend fun resolveExisting(path: String): String? {
         if (path.isBlank()) return null
         var parentId: String? = null
@@ -44,14 +43,12 @@ class FolderPathResolver(
         return parentId
     }
 
-    /** True when a folder row with this id exists locally. */
     suspend fun exists(folderId: String?): Boolean =
         folderId != null && folderDao.byId(folderId) != null
 
     /**
-     * Resolves a path, creating missing folders. Empty path means root. A
-     * created leaf takes [leafId] so it keeps the identity the other device
-     * gave it, or the folder state document later adds an empty twin.
+     * A created leaf keeps [leafId], the identity another device gave it, unless that id was
+     * deleted for good.
      */
     suspend fun resolveOrCreate(
         path: String,
@@ -59,6 +56,7 @@ class FolderPathResolver(
         startParentId: String? = null
     ): String? {
         if (path.isBlank()) return startParentId
+        val reusableLeafId = leafId?.takeIf { tombstoneDao.idIfDeleted(it) == null }
         return creationMutex.withLock {
             var parentId: String? = startParentId
             val segments = path.split('/').filter { it.isNotBlank() }.take(MAX_DEPTH)
@@ -68,7 +66,7 @@ class FolderPathResolver(
                 parentId = existing?.id ?: run {
                     val now = System.currentTimeMillis()
                     val folder = FolderEntity(
-                        id = leafId.takeIf { index == segments.lastIndex }
+                        id = reusableLeafId.takeIf { index == segments.lastIndex }
                             ?: UUID.randomUUID().toString(),
                         chatId = activeChannel.id(),
                         parentId = parentId,

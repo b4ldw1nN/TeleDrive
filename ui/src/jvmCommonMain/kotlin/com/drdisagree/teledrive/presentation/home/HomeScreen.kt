@@ -74,6 +74,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.drdisagree.teledrive.core.telegram.TelegramConnectionState
+import com.drdisagree.teledrive.domain.model.BackupHold
 import com.drdisagree.teledrive.domain.model.BackupSessionStatus
 import com.drdisagree.teledrive.domain.model.FileSortField
 import com.drdisagree.teledrive.domain.model.SortDirection
@@ -104,6 +105,7 @@ import com.drdisagree.teledrive.resources.app_name
 import com.drdisagree.teledrive.resources.backup_age_days
 import com.drdisagree.teledrive.resources.backup_age_hours
 import com.drdisagree.teledrive.resources.backup_age_minutes
+import com.drdisagree.teledrive.resources.collection_offline_on_device
 import com.drdisagree.teledrive.resources.common_cancel
 import com.drdisagree.teledrive.resources.common_pause
 import com.drdisagree.teledrive.resources.common_resume
@@ -118,6 +120,8 @@ import com.drdisagree.teledrive.resources.home_backup_just_now
 import com.drdisagree.teledrive.resources.home_backup_never
 import com.drdisagree.teledrive.resources.home_backup_nothing_to_back_up
 import com.drdisagree.teledrive.resources.home_backup_paused
+import com.drdisagree.teledrive.resources.home_backup_waiting_charger
+import com.drdisagree.teledrive.resources.home_backup_waiting_wifi
 import com.drdisagree.teledrive.resources.home_cancel_backup_action
 import com.drdisagree.teledrive.resources.home_cancel_backup_title
 import com.drdisagree.teledrive.resources.home_choose_folders
@@ -144,13 +148,12 @@ import com.drdisagree.teledrive.resources.home_transfer_history
 import com.drdisagree.teledrive.resources.home_transfer_history_subtitle
 import com.drdisagree.teledrive.resources.home_waiting_count
 import com.drdisagree.teledrive.resources.trash
+import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
-import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.viewmodel.koinViewModel
-import kotlin.math.roundToInt
-import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -380,6 +383,7 @@ fun HomeScreen(
                     showArchived = state.showArchivedSection,
                     showHidden = state.showHiddenSection,
                     activeTransferCount = state.activeTransferCount,
+                    offlineBytes = state.offlineBytes,
                     onOpenCollection = onOpenCollection,
                     onOpenTransfers = onOpenTransfers,
                     onOpenTrash = onOpenTrash
@@ -394,6 +398,7 @@ private fun CollectionLinks(
     showArchived: Boolean,
     showHidden: Boolean,
     activeTransferCount: Int,
+    offlineBytes: Long,
     onOpenCollection: (CollectionType) -> Unit,
     onOpenTransfers: () -> Unit,
     onOpenTrash: () -> Unit
@@ -409,7 +414,16 @@ private fun CollectionLinks(
                 CollectionRow(
                     icon = collection.icon,
                     title = stringResource(collection.titleRes),
-                    subtitle = stringResource(collection.subtitleRes),
+                    subtitle = if (
+                        collection == CollectionType.AVAILABLE_OFFLINE && offlineBytes > 0
+                    ) {
+                        stringResource(
+                            Res.string.collection_offline_on_device,
+                            Formatters.bytes(offlineBytes)
+                        )
+                    } else {
+                        stringResource(collection.subtitleRes)
+                    },
                     onClick = { onOpenCollection(collection) }
                 )
             }
@@ -538,7 +552,13 @@ private fun BackupCard(
                     Text(
                         text = when {
                             state.activeBackup?.status == BackupSessionStatus.RUNNING ->
-                                stringResource(Res.string.home_backing_up)
+                                stringResource(
+                                    when (state.backupHold) {
+                                        BackupHold.CHARGER -> Res.string.home_backup_waiting_charger
+                                        BackupHold.WIFI -> Res.string.home_backup_waiting_wifi
+                                        null -> Res.string.home_backing_up
+                                    }
+                                )
 
                             state.activeBackup?.status == BackupSessionStatus.PAUSED ->
                                 stringResource(Res.string.home_backup_paused)
@@ -692,16 +712,7 @@ private fun BackupCard(
     }
 }
 
-/** Connection state worth showing, or null while everything is normal. */
-private data class ConnectionStatus(
-    val indicator: ConnectionIndicator,
-    val labelRes: StringResource
-)
-
-/**
- * Connectivity is only surfaced when it needs attention. A recovery shows
- * briefly so the change is acknowledged, then the row disappears again.
- */
+/** Only shown when connectivity needs attention; a recovery shows briefly, then the row goes. */
 @Composable
 private fun rememberConnectionStatus(
     offline: Boolean,
@@ -747,7 +758,6 @@ private fun rememberConnectionStatus(
     }
 }
 
-
 @Composable
 private fun StorageCard(slices: List<StorageSlice>, modifier: Modifier = Modifier) {
     val totalBytes = remember(slices) { slices.sumOf { it.totalBytes } }
@@ -780,7 +790,7 @@ private fun StorageCard(slices: List<StorageSlice>, modifier: Modifier = Modifie
     }
 }
 
-/** Proportional bar. Every slice keeps a sliver so nothing vanishes entirely. */
+/** Every slice keeps a sliver, so nothing vanishes entirely. */
 @Composable
 private fun StorageBar(slices: List<StorageSlice>, totalBytes: Long) {
     Row(
@@ -863,11 +873,8 @@ private fun StorageLegend(slices: List<StorageSlice>, totalBytes: Long) {
     }
 }
 
-
 /**
- * The backup card answers whether the drive is current, which the storage
- * card cannot say. A stale timestamp means nothing while nothing is
- * scheduled, so a disabled schedule outranks it.
+ * A disabled schedule outranks a stale timestamp, which means nothing while nothing is scheduled.
  */
 @Composable
 private fun backupFreshnessLabel(
@@ -906,7 +913,6 @@ private fun backupFreshnessLabel(
         )
     }
 }
-
 
 private val AVATAR_SIZE = 32.dp
 private const val RECOVERED_VISIBLE_MS = 2_000L

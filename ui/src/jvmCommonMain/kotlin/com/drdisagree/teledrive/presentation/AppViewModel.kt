@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.drdisagree.teledrive.core.security.AppLockManager
 import com.drdisagree.teledrive.core.telegram.TelegramAuthState
-import com.drdisagree.teledrive.domain.model.AppTheme
 import com.drdisagree.teledrive.domain.model.BackupTrigger
 import com.drdisagree.teledrive.domain.model.LayoutDensity
 import com.drdisagree.teledrive.domain.repository.BackupRepository
@@ -12,6 +11,7 @@ import com.drdisagree.teledrive.domain.repository.ChannelRepository
 import com.drdisagree.teledrive.domain.repository.SettingsRepository
 import com.drdisagree.teledrive.domain.repository.SyncRepository
 import com.drdisagree.teledrive.domain.repository.TelegramAuthRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -32,18 +32,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import com.drdisagree.teledrive.core.common.AppResult
 import com.drdisagree.teledrive.data.repository.LocalDataWiper
 import kotlinx.coroutines.NonCancellable
-import com.drdisagree.teledrive.domain.model.AppLanguage
 import kotlinx.coroutines.withContext
-
-data class AppUiState(
-    val loading: Boolean = true,
-    val onboardingComplete: Boolean = false,
-    val theme: AppTheme = AppTheme.SYSTEM,
-    val language: AppLanguage = AppLanguage.SYSTEM,
-    val dynamicColor: Boolean = true,
-    val compactLayout: Boolean = false,
-    val locked: Boolean = false
-)
 
 class AppViewModel(
     private val settingsRepository: SettingsRepository,
@@ -64,6 +53,10 @@ class AppViewModel(
 
     private val _pendingUpdate = MutableStateFlow<AppRelease?>(null)
     val pendingUpdate: StateFlow<AppRelease?> = _pendingUpdate.asStateFlow()
+
+    @Volatile
+    private var driveReady = false
+    private var following: Job? = null
 
     val uiState: StateFlow<AppUiState> = combine(
         settingsRepository.preferences,
@@ -93,6 +86,12 @@ class AppViewModel(
             uiState.map { it.onboardingComplete }
         ) { ready, onboarded -> ready && onboarded }
             .distinctUntilChanged()
+            .onEach { ready ->
+                if (!ready) {
+                    driveReady = false
+                    stopFollowing()
+                }
+            }
             .filter { it }
             .onEach {
                 channelRepository.refreshKnown()
@@ -100,8 +99,11 @@ class AppViewModel(
                     _driveMissing.tryEmit(Unit)
                     return@onEach
                 }
+                driveReady = true
                 syncRepository.syncOnStart()
                 catchUpBackup()
+                viewModelScope.launch { syncRepository.catchUpWithRemote() }
+                startFollowing()
             }
             .launchIn(viewModelScope)
     }
@@ -113,7 +115,10 @@ class AppViewModel(
         backupRepository.startBackup(BackupTrigger.SCHEDULED)
     }
 
-    fun onAppStopped() = appLockManager.onAppStopped()
+    fun onAppStopped() {
+        appLockManager.onAppStopped()
+        stopFollowing()
+    }
 
     val lockedOut: StateFlow<Boolean> = appLockManager.lockedOut
 
@@ -127,6 +132,20 @@ class AppViewModel(
 
     fun onAppStarted() {
         viewModelScope.launch { appLockManager.onAppStarted() }
+        if (driveReady) {
+            viewModelScope.launch { syncRepository.catchUpWithRemote() }
+            startFollowing()
+        }
+    }
+
+    private fun startFollowing() {
+        if (following?.isActive == true) return
+        following = viewModelScope.launch { syncRepository.followRemoteChanges() }
+    }
+
+    private fun stopFollowing() {
+        following?.cancel()
+        following = null
     }
 
     /**
@@ -147,7 +166,6 @@ class AppViewModel(
         }
     }
 
-    /** Drops the unusable session and sends the user back to signing in. */
     fun resetSession() {
         viewModelScope.launch {
             withContext(NonCancellable) {

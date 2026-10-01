@@ -12,7 +12,7 @@ class DecideBackupActionUseCaseTest {
 
     private val useCase = DecideBackupActionUseCase(EvaluateExclusionsUseCase())
 
-    private fun candidate(size: Long = 1000) = EvaluateExclusionsUseCase.Candidate(
+    private fun candidate(size: Long = 1000) = ExclusionCandidate(
         absolutePath = "/dcim/photo.jpg",
         sizeBytes = size,
         mimeType = "image/jpeg",
@@ -39,7 +39,7 @@ class DecideBackupActionUseCaseTest {
         val decision = useCase(
             candidate = candidate(size = 1000),
             modifiedAt = 100,
-            existingRecord = DecideBackupActionUseCase.ExistingRecord(1000, 100, "abc"),
+            existingRecord = ExistingBackupRecord(1000, 100, "abc"),
             storedHashes = emptySet(),
             exclusions = emptyList(),
             maxFileSizeBytes = 0,
@@ -55,7 +55,7 @@ class DecideBackupActionUseCaseTest {
         val decision = useCase(
             candidate = candidate(size = 1000),
             modifiedAt = 200,
-            existingRecord = DecideBackupActionUseCase.ExistingRecord(1000, 100, "abc"),
+            existingRecord = ExistingBackupRecord(1000, 100, "abc"),
             storedHashes = emptySet(),
             exclusions = emptyList(),
             maxFileSizeBytes = 0,
@@ -70,7 +70,7 @@ class DecideBackupActionUseCaseTest {
         val decision = useCase(
             candidate = candidate(size = 1000),
             modifiedAt = 200,
-            existingRecord = DecideBackupActionUseCase.ExistingRecord(1000, 100, "abc"),
+            existingRecord = ExistingBackupRecord(1000, 100, "abc"),
             storedHashes = emptySet(),
             exclusions = emptyList(),
             maxFileSizeBytes = 0,
@@ -84,7 +84,7 @@ class DecideBackupActionUseCaseTest {
         val decision = useCase(
             candidate = candidate(size = 2000),
             modifiedAt = 200,
-            existingRecord = DecideBackupActionUseCase.ExistingRecord(1000, 100, "abc"),
+            existingRecord = ExistingBackupRecord(1000, 100, "abc"),
             storedHashes = emptySet(),
             exclusions = emptyList(),
             maxFileSizeBytes = 0,

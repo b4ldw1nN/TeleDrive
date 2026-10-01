@@ -4,26 +4,24 @@ import com.drdisagree.teledrive.core.common.AppError
 import com.drdisagree.teledrive.core.common.AppResult
 import com.drdisagree.teledrive.core.telegram.TelegramClient
 import com.drdisagree.teledrive.core.telegram.TelegramException
+import com.drdisagree.teledrive.core.transfer.FileParts
+import com.drdisagree.teledrive.data.local.dao.FilePartDao
 import com.drdisagree.teledrive.data.local.entity.FileEntity
 import com.drdisagree.teledrive.data.remote.telegram.ManifestCodec
 import com.drdisagree.teledrive.data.remote.telegram.RemoteFileManifest
 
-/**
- * Rewrites the caption manifest of already-uploaded files so organisational
- * state (name, folder, favorite, hidden, archived, trash) lives in Telegram
- * and survives a local wipe. Local rows are the fast path; the caption is the
- * durable copy.
- */
+/** Local rows are the fast path; the caption is the durable copy that survives a wipe. */
 class FileManifestPublisher(
     private val telegramClient: TelegramClient,
     private val manifestCodec: ManifestCodec,
-    private val folderPathResolver: FolderPathResolver
+    private val folderPathResolver: FolderPathResolver,
+    private val filePartDao: FilePartDao
 ) {
 
     suspend fun publish(entity: FileEntity): AppResult<Unit> {
         val chatId = entity.chatId ?: return AppResult.Success(Unit)
         val messageId = entity.messageId ?: return AppResult.Success(Unit)
-        val manifest = RemoteFileManifest(
+        val fileManifest = RemoteFileManifest(
             fileId = entity.id,
             name = entity.name,
             folderPath = folderPathResolver.pathOf(entity.folderId ?: entity.preTrashFolderId),
@@ -40,8 +38,15 @@ class FileManifestPublisher(
             modifiedAt = entity.modifiedAt,
             width = entity.width,
             height = entity.height,
-            durationMs = entity.durationMs
+            durationMs = entity.durationMs,
+            iconFileId = entity.iconFileId
         )
+        val partCount = maxOf(filePartDao.countOf(entity.id), entity.partCount)
+        val manifest = if (partCount > 1) {
+            FileParts.asFirstPart(fileManifest, partCount)
+        } else {
+            fileManifest
+        }
         return try {
             telegramClient.editCaption(
                 chatId,

@@ -2,11 +2,13 @@ package com.drdisagree.teledrive.core.transfer
 
 import com.drdisagree.teledrive.core.network.NetworkMonitor
 import com.drdisagree.teledrive.core.network.NetworkStatus
+import com.drdisagree.teledrive.core.power.PowerMonitor
 import com.drdisagree.teledrive.data.local.dao.FileDao
 import com.drdisagree.teledrive.data.local.dao.TransferDao
 import com.drdisagree.teledrive.data.local.entity.TransferEntity
 import com.drdisagree.teledrive.domain.model.BackupState
 import com.drdisagree.teledrive.domain.model.TransferState
+import com.drdisagree.teledrive.domain.model.TransferType
 import com.drdisagree.teledrive.domain.model.UserPreferences
 import com.drdisagree.teledrive.domain.repository.SettingsRepository
 import kotlin.time.Duration.Companion.milliseconds
@@ -21,20 +23,16 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-/**
- * Drains the transfer queue with bounded concurrency. Transient failures are
- * retried with exponential backoff up to the configured retry count; rate
- * limits honor the server-provided delay. Platform schedulers wrap this and
- * add whatever their environment needs, like a foreground service or
- * failure notifications.
- */
+/** Transient failures retry with exponential backoff; rate limits wait the server-given delay. */
 class TransferQueueDrainer(
     private val transferDao: TransferDao,
     private val fileDao: FileDao,
     private val transferExecutor: TransferExecutor,
     private val backupSessionTracker: BackupSessionTracker,
     private val settingsRepository: SettingsRepository,
-    private val networkMonitor: NetworkMonitor
+    private val networkMonitor: NetworkMonitor,
+    private val powerMonitor: PowerMonitor,
+    private val backupResumeScheduler: BackupResumeScheduler
 ) {
 
     suspend fun drain(
@@ -43,6 +41,7 @@ class TransferQueueDrainer(
     ): TransferDrainResult {
         val claimLock = Mutex()
         var interrupted = false
+        var backupsHeld = false
 
         coroutineScope {
             List(MAX_CONCURRENCY) { slot ->
@@ -64,12 +63,20 @@ class TransferQueueDrainer(
                             interrupted = true
                             return@launch
                         }
-                        val next = claimLock.withLock { claimNextQueued() } ?: return@launch
+                        val hold = BackupGate.hold(prefs, status, powerMonitor.isCharging())
+                        val next = claimLock.withLock { claimNextQueued(includeBackups = hold == null) }
+                        if (next == null) {
+                            if (hold != null && transferDao.hasQueued(TransferType.BACKUP)) {
+                                backupsHeld = true
+                            }
+                            return@launch
+                        }
                         runTransfer(next, prefs.transferRetryCount, onTerminalFailure)
                     }
                 }
             }.joinAll()
         }
+        if (backupsHeld) scheduleResume()
         if (interrupted) {
             withContext(NonCancellable) { transferDao.requeueRunning() }
             return TransferDrainResult.INTERRUPTED
@@ -77,29 +84,48 @@ class TransferQueueDrainer(
         return TransferDrainResult.COMPLETED
     }
 
+    suspend fun hasRunnableWork(): Boolean {
+        val prefs = settingsRepository.preferences.first()
+        val hold = currentHold(prefs)
+        if (nextClaimable(includeBackups = hold == null) != null) return true
+        if (hold != null && transferDao.hasQueued(TransferType.BACKUP)) scheduleResume()
+        return false
+    }
+
+    private fun currentHold(prefs: UserPreferences) =
+        BackupGate.hold(prefs, networkMonitor.currentStatus(), powerMonitor.isCharging())
+
+    private suspend fun scheduleResume() {
+        val prefs = settingsRepository.preferences.first()
+        backupResumeScheduler.resumeWhen(prefs.backupChargingOnly, prefs.backupWifiOnly)
+    }
+
     private fun concurrencyOf(prefs: UserPreferences): Int =
         prefs.transferConcurrency.coerceIn(1, MAX_CONCURRENCY)
 
     /**
-     * Parks a slot the current setting has no room for. Raising the setting
-     * wakes it immediately, so a change applies to the backup already running
-     * instead of only to the next one. Returns false once the queue has
-     * drained, which lets a parked slot finish rather than hold the drain open.
+     * Raising the setting wakes a parked slot at once; returns false once the queue drains so the
+     * slot can finish.
      */
     private suspend fun awaitSlot(slot: Int): Boolean {
         val widened = withTimeoutOrNull(SLOT_WAIT_MS.milliseconds) {
             settingsRepository.preferences.first { slot < concurrencyOf(it) }
         }
-        return widened != null || transferDao.nextQueued(1).isNotEmpty()
+        if (widened != null) return true
+        val hold = currentHold(settingsRepository.preferences.first())
+        return nextClaimable(includeBackups = hold == null) != null
     }
 
-    /**
-     * Marks one queued transfer as running before releasing the lock, so every
-     * slot in the pool picks a different row and starts as soon as it is free
-     * instead of waiting for the rest of a batch to finish.
-     */
-    private suspend fun claimNextQueued(): String? {
-        val next = transferDao.nextQueued(1).firstOrNull() ?: return null
+    /** Marked running before the lock is released, so every slot picks a different row. */
+    private suspend fun nextClaimable(includeBackups: Boolean): TransferEntity? =
+        if (includeBackups) {
+            transferDao.nextQueued(1).firstOrNull()
+        } else {
+            transferDao.nextQueuedExcept(TransferType.BACKUP, 1).firstOrNull()
+        }
+
+    private suspend fun claimNextQueued(includeBackups: Boolean): String? {
+        val next = nextClaimable(includeBackups) ?: return null
         transferDao.setState(next.id, TransferState.RUNNING, System.currentTimeMillis())
         return next.id
     }
@@ -115,23 +141,23 @@ class TransferQueueDrainer(
             if (current.state != TransferState.RUNNING) return
 
             when (val outcome = transferExecutor.execute(current)) {
-                is TransferExecutor.Outcome.Completed -> {
+                is TransferOutcome.Completed -> {
                     refreshSession(current.backupSessionId)
                     return
                 }
 
-                is TransferExecutor.Outcome.Paused -> {
+                is TransferOutcome.Paused -> {
                     markState(transferId, TransferState.PAUSED)
                     return
                 }
 
-                is TransferExecutor.Outcome.Canceled -> {
+                is TransferOutcome.Canceled -> {
                     markState(transferId, TransferState.CANCELLED)
                     refreshSession(current.backupSessionId)
                     return
                 }
 
-                is TransferExecutor.Outcome.Failed -> {
+                is TransferOutcome.Failed -> {
                     attempt++
                     if (attempt > maxRetries) {
                         withContext(NonCancellable) {

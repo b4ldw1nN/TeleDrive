@@ -20,6 +20,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -77,6 +78,7 @@ class TdLibTelegramClient(
         extraBufferCapacity = 4096,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
+    private val ownWrites = OwnWrites()
 
     override suspend fun start(credentials: TelegramCredentials) {
         clientMutex.withLock {
@@ -105,6 +107,9 @@ class TdLibTelegramClient(
     }
 
     private fun handleUpdate(generation: Int, update: TdApi.Object) {
+        if (update is TdApi.UpdateMessageSendSucceeded) {
+            ownWrites.wroteCaption(update.message.id, update.message.content.captionText().orEmpty())
+        }
         updates.tryEmit(update)
         when (update) {
             is TdApi.UpdateAuthorizationState ->
@@ -238,9 +243,8 @@ class TdLibTelegramClient(
 
 
     /**
-     * TDLib answers a queued request whenever it reconnects, which on a dead
-     * connection can be never. Every request therefore carries a deadline, so a
-     * caller fails with an error it can show instead of waiting forever.
+     * TDLib answers a queued request only when it reconnects, which can be never, so every request
+     * has a deadline.
      */
     private suspend fun <T : TdApi.Object> send(function: TdApi.Function<T>): T {
         val activeClient = client ?: throw TelegramException(500, "Telegram client not started")
@@ -335,9 +339,8 @@ class TdLibTelegramClient(
     }
 
     /**
-     * Signing out is a local decision. Telling Telegram is attempted first, but
-     * a client that never started, or a server that does not answer, must not
-     * leave the account stuck on this device with no way out.
+     * Signing out is local: a client that never started or a silent server must not leave the
+     * account stuck.
      */
     override suspend fun logout() {
         runCatching { send(TdApi.LogOut()) }
@@ -369,10 +372,7 @@ class TdLibTelegramClient(
 
     private val storageChatMutex = Mutex()
 
-    /**
-     * Replaces whatever TDLib had with the one route the app wants, so a proxy
-     * removed here cannot keep being used behind the app's back.
-     */
+    /** Replaces every TDLib proxy, so one removed here cannot keep being used. */
     override suspend fun applyProxy(proxy: TelegramProxy?) {
         if (client == null) return
         awaitAuthorizedOrParameters()
@@ -406,9 +406,8 @@ class TdLibTelegramClient(
     }
 
     /**
-     * Changing the route leaves TDLib on its existing sockets, which were opened
-     * the old way. Re-declaring the network type forces every connection to be
-     * re-established, this time through the proxy that was just applied.
+     * TDLib keeps its existing sockets; re-declaring the network type forces them through the new
+     * route.
      */
     override suspend fun reconnect() {
         if (client == null || !parametersReady) return
@@ -438,9 +437,8 @@ class TdLibTelegramClient(
     }
 
     /**
-     * Shared links carry the secret base64url encoded, while TDLib documents it
-     * as hexadecimal. Anything that is not already hex is decoded and re-encoded
-     * so both forms of the same secret reach Telegram.
+     * Shared links carry base64url secrets while TDLib expects hex, so anything not hex is
+     * re-encoded.
      */
     private fun mtprotoSecret(raw: String): String {
         val secret = raw.trim()
@@ -455,8 +453,7 @@ class TdLibTelegramClient(
     }
 
     /**
-     * Proxy calls are accepted once TDLib has its parameters, well before a
-     * sign in, which is the point: without a route there is nothing to sign in
+     * Proxy calls are accepted before sign in, since without a route there is nothing to sign in
      * through.
      */
     private suspend fun awaitAuthorizedOrParameters() {
@@ -617,7 +614,6 @@ class TdLibTelegramClient(
     private fun isDriveTitle(title: String): Boolean =
         title == STORAGE_CHAT_TITLE || title.startsWith("$STORAGE_CHAT_TITLE ")
 
-    /** Requests answer with an error until the client finishes signing in. */
     private suspend fun awaitAuthorized() {
         if (_authState.value == TelegramAuthState.Ready) return
         withTimeoutOrNull(AUTH_WAIT_MS.milliseconds) {
@@ -626,9 +622,8 @@ class TdLibTelegramClient(
     }
 
     /**
-     * A channel counts as the drive when it carries the marker, or when it is
-     * an own private channel with the drive title whose description never took.
-     * The marker is written back so the next check is unambiguous.
+     * Also adopts an own private channel with the drive title whose description never took, and
+     * writes the marker back.
      */
     override suspend fun listStorageChannels(knownChatIds: List<Long>): List<StorageChannel> {
         awaitAuthorized()
@@ -670,10 +665,7 @@ class TdLibTelegramClient(
             }.getOrNull()
         }
 
-    /**
-     * User files only. The channel also holds the folder state and the key
-     * backup, which are the app's own bookkeeping and never shown as files.
-     */
+    /** User files only: the folder state and key backup documents are not counted. */
     private suspend fun documentCount(chatId: Long): Int = runCatching {
         val total = searchCount(chatId, "")
         val internal = INTERNAL_DOCUMENT_NAMES.sumOf { name -> searchCount(chatId, name) }
@@ -726,9 +718,8 @@ class TdLibTelegramClient(
     }
 
     /**
-     * Server side search finds the channel even before the local chat list has
-     * synced, which is the case right after signing in. The cached list is only
-     * a fallback for accounts where the title was changed.
+     * Server search finds the channel before the local chat list has synced, as happens right after
+     * sign in.
      */
     private suspend fun findStorageChat(): Long? {
         val candidates = LinkedHashSet<Long>()
@@ -753,10 +744,8 @@ class TdLibTelegramClient(
     }
 
     /**
-     * Titles come from the local chat cache, but a description needs a full
-     * info request per chat. Filtering by title first keeps that to the handful
-     * of channels that can actually be the drive, instead of hundreds of
-     * requests that would trip Telegram's flood limits and fail the real match.
+     * Filtering by title first keeps full info requests to a handful, instead of hundreds that
+     * would trip flood limits.
      */
     private suspend fun matchStorageChat(chatIds: Collection<Long>): Long? {
         val titled = chatIds.mapNotNull { chatId ->
@@ -793,9 +782,8 @@ class TdLibTelegramClient(
         .getOrDefault(false)
 
     /**
-     * TDLib loads chat list pages in the background and answers with error 404
-     * once every chat is loaded, so each page needs a moment to land in the
-     * local database before the next read.
+     * TDLib loads pages in the background and answers 404 once done, so each page needs a moment to
+     * land.
      */
     private suspend fun loadEveryChat(chatList: TdApi.ChatList) {
         var page = 0
@@ -809,10 +797,7 @@ class TdLibTelegramClient(
         }
     }
 
-    /**
-     * Last resort for a channel this app created whose marker is missing. Only
-     * an own private channel with the drive title is adopted.
-     */
+    /** Only an own private channel with the drive title is adopted. */
     private suspend fun adoptStorageChat(chatIds: Collection<Long>): Long? {
         for (chatId in chatIds) {
             val adopted = runCatching {
@@ -1090,10 +1075,8 @@ class TdLibTelegramClient(
             .map { it.file.toInfo() }
 
     /**
-     * Messages come from server side search rather than getChatHistory: the
-     * history call answers from whatever TDLib happens to have cached, which
-     * on a fresh session is the oldest handful of messages, and reports the
-     * channel as nearly empty. Search always reflects the channel itself.
+     * Search rather than getChatHistory: history answers from TDLib's cache, which on a fresh
+     * session is nearly empty.
      */
     override suspend fun fetchDocuments(
         chatId: Long,
@@ -1146,6 +1129,7 @@ class TdLibTelegramClient(
             .getOrNull()
 
     override suspend fun editCaption(chatId: Long, messageId: Long, caption: String) {
+        ownWrites.wroteCaption(messageId, caption)
         paced {
             send(
                 TdApi.EditMessageCaption(
@@ -1161,14 +1145,61 @@ class TdLibTelegramClient(
 
     override suspend fun deleteMessages(chatId: Long, messageIds: List<Long>) {
         if (messageIds.isEmpty()) return
+        ownWrites.deleted(messageIds)
         messageIds.chunked(DELETE_BATCH).forEach { batch ->
             paced { send(TdApi.DeleteMessages(chatId, batch.toLongArray(), true)) }
         }
     }
 
+    override fun messageChanges(chatId: Long): Flow<MessageChange> = updates.mapNotNull { update ->
+        when (update) {
+            is TdApi.UpdateNewMessage -> update.message
+                .takeIf { it.chatId == chatId && it.sendingState == null }
+                ?.takeUnless { ownWrites.isOwnContent(it.id, it.content.captionText()) }
+                ?.let { MessageChange.Updated(it.id) }
+
+            is TdApi.UpdateMessageContent ->
+                if (update.chatId == chatId &&
+                    !ownWrites.isOwnContent(update.messageId, update.newContent.captionText())
+                ) {
+                    MessageChange.Updated(update.messageId)
+                } else {
+                    null
+                }
+
+            is TdApi.UpdateDeleteMessages ->
+                if (update.chatId == chatId && update.isPermanent && !update.fromCache) {
+                    ownWrites.deletedElsewhere(update.messageIds.toList())
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { MessageChange.Deleted(it) }
+                } else {
+                    null
+                }
+
+            else -> null
+        }
+    }
+
+    override suspend fun openChat(chatId: Long) {
+        send<TdApi.Ok>(TdApi.OpenChat(chatId))
+    }
+
+    override suspend fun closeChat(chatId: Long) {
+        send<TdApi.Ok>(TdApi.CloseChat(chatId))
+    }
+
+    private fun TdApi.MessageContent.captionText(): String? = when (this) {
+        is TdApi.MessageDocument -> caption?.text
+        is TdApi.MessageAudio -> caption?.text
+        is TdApi.MessageVideo -> caption?.text
+        is TdApi.MessagePhoto -> caption?.text
+        is TdApi.MessageAnimation -> caption?.text
+        else -> null
+    }
+
     /**
-     * Message creation is what Telegram rate limits, so those calls queue behind
-     * one pacer and a flood wait stops all of them, not just the caller that hit it.
+     * A flood wait applies to the whole account, so every message-creating call waits behind one
+     * pacer.
      */
     private suspend fun <T> paced(block: suspend () -> T): T =
         pacer.paced { withRateLimitRetry(block) }
@@ -1327,10 +1358,8 @@ class TdLibTelegramClient(
 }
 
 /**
- * A download only counts as ready when the bytes are still on disk. TDLib keeps
- * reporting a completed local copy after the file has been removed from its
- * cache directory, which otherwise surfaces as a download that finishes
- * instantly and then cannot be found.
+ * TDLib keeps reporting a completed copy after its cache file is removed, so the bytes must still
+ * be on disk.
  */
 private fun TdApi.File.readyPath(): String? {
     val local = this.local ?: return null

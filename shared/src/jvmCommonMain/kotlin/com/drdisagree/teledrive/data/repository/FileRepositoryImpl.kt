@@ -207,6 +207,16 @@ class FileRepositoryImpl(
             folderDao.observeFavorites(chatId).map { list -> list.map { it.toDomain() } }
         }
 
+    override fun observeAvailableOfflineFolders(): Flow<List<DriveFolder>> =
+        activeChannel.observe().flatMapLatest { chatId ->
+            folderDao.observeAvailableOffline(chatId).map { list -> list.map { it.toDomain() } }
+        }
+
+    override fun observeAvailableOfflineMissingIds(): Flow<List<String>> =
+        activeChannel.observe().flatMapLatest { chatId ->
+            fileDao.observeAvailableOfflineMissingIds(chatId)
+        }
+
     override fun observeArchivedFolders(): Flow<List<DriveFolder>> =
         activeChannel.observe().flatMapLatest { chatId ->
             folderDao.observeArchived(chatId).map { list -> list.map { it.toDomain() } }
@@ -230,7 +240,8 @@ class FileRepositoryImpl(
             parentId = parentId,
             name = sanitized,
             createdAt = now,
-            modifiedAt = now
+            modifiedAt = now,
+            changedAt = now
         )
         folderDao.upsert(folder)
         markFolderStateDirty()
@@ -428,9 +439,8 @@ class FileRepositoryImpl(
     }
 
     /**
-     * Queues a caption rewrite for every file under [folderId], subfolders
-     * included, without walking the files themselves: a folder rename can
-     * cover thousands of captions and none of them block the caller.
+     * Marks rows by folder instead of walking files: a rename can cover thousands of captions
+     * without blocking the caller.
      */
     private suspend fun markFolderContentsDirty(folderId: String) {
         var frontier = listOf(folderId)
@@ -455,12 +465,12 @@ class FileRepositoryImpl(
         publishScheduler.kick()
     }
 
-    override suspend fun setFilesPinned(ids: List<String>, pinned: Boolean) {
-        fileDao.setPinned(ids, pinned)
+    override suspend fun setFilesAvailableOffline(ids: List<String>, available: Boolean) {
+        fileDao.setAvailableOffline(ids, available)
     }
 
-    override suspend fun setFolderPinned(id: String, pinned: Boolean) {
-        folderDao.setPinned(id, pinned)
+    override suspend fun setFolderAvailableOffline(id: String, available: Boolean) {
+        folderDao.setAvailableOffline(id, available)
     }
 
     override suspend fun setFilesFavorite(ids: List<String>, favorite: Boolean) {
@@ -479,17 +489,17 @@ class FileRepositoryImpl(
     }
 
     override suspend fun setFolderFavorite(id: String, favorite: Boolean) {
-        folderDao.setFavorite(id, favorite)
+        folderDao.setFavorite(id, favorite, System.currentTimeMillis())
         markFolderStateDirty()
     }
 
     override suspend fun setFolderHidden(id: String, hidden: Boolean) {
-        folderDao.setHidden(id, hidden)
+        folderDao.setHidden(id, hidden, System.currentTimeMillis())
         markFolderStateDirty()
     }
 
     override suspend fun setFolderArchived(id: String, archived: Boolean) {
-        folderDao.setArchived(id, archived)
+        folderDao.setArchived(id, archived, System.currentTimeMillis())
         markFolderStateDirty()
     }
 
@@ -589,7 +599,6 @@ class FileRepositoryImpl(
     override suspend fun readNote(fileId: String): AppResult<String> {
         val entity = fileDao.byId(fileId) ?: return AppResult.Failure(AppError.NotFound)
         entity.localPath?.let(noteStore::read)?.let { return AppResult.Success(it) }
-        // Saving replaces the file, but the editor still has to show what is there.
         val fetched = fetchNoteBody(entity) ?: return AppResult.Failure(AppError.NoRemoteCopy)
         return AppResult.Success(fetched)
     }
@@ -620,7 +629,6 @@ class FileRepositoryImpl(
         return body
     }
 
-    /** A note with no title borrows the link's host, or its first line. */
     private fun fallbackTitle(body: String): String {
         val trimmed = body.trim()
         val firstLine = trimmed.lineSequence().firstOrNull { it.isNotBlank() }.orEmpty().trim()
@@ -638,9 +646,7 @@ class FileRepositoryImpl(
         val source = File(localPath)
         if (!source.exists() || !source.isFile) return null
 
-        /* Re-importing the very same path is the commonest duplicate of all,
-           and it needs no hashing to recognize. Rows without a remote copy do
-           not count: an interrupted upload must not block its own retry. */
+        // Rows without a remote copy do not count, so an interrupted upload can be retried.
         fileDao.byLocalPath(source.absolutePath)
             ?.takeIf { it.trashedAt == null && it.messageId != null }
             ?.let { return it.toDomain() }
@@ -682,7 +688,7 @@ class FileRepositoryImpl(
                     entity.backupState == BackupState.BACKED_UP
         }
         if (candidates.isEmpty()) {
-            return AppResult.Success(LocalCleanup(0, keptPinned = kept.size))
+            return AppResult.Success(LocalCleanup(0, keptOffline = kept.size))
         }
 
         val cleanup = localCopyDeleter.delete(candidates.mapNotNull { it.localPath })
@@ -696,7 +702,7 @@ class FileRepositoryImpl(
                 cleared++
             }
         }
-        return AppResult.Success(LocalCleanup(cleared, keptPinned = kept.size))
+        return AppResult.Success(LocalCleanup(cleared, keptOffline = kept.size))
     }
 
     companion object {

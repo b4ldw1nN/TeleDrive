@@ -22,7 +22,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.filled.Storage
@@ -163,9 +163,9 @@ import com.drdisagree.teledrive.resources.common_confirm_trash_count_title
 import com.drdisagree.teledrive.resources.common_create
 import com.drdisagree.teledrive.resources.common_deselect_all
 import com.drdisagree.teledrive.resources.common_download
-import com.drdisagree.teledrive.resources.common_keep_on_device
+import com.drdisagree.teledrive.resources.common_make_available_offline
 import com.drdisagree.teledrive.resources.common_free_space
-import com.drdisagree.teledrive.resources.common_stop_keeping_on_device
+import com.drdisagree.teledrive.resources.common_remove_from_offline
 import com.drdisagree.teledrive.resources.common_move_trash
 import com.drdisagree.teledrive.resources.common_rename
 import com.drdisagree.teledrive.resources.common_restore_trash_emptied
@@ -420,14 +420,14 @@ fun FilesScreen(
                                         add(
                                             MenuAction(
                                                 label = stringResource(
-                                                    if (state.allSelectedPinned) {
-                                                        Res.string.common_stop_keeping_on_device
+                                                    if (state.allSelectedAvailableOffline) {
+                                                        Res.string.common_remove_from_offline
                                                     } else {
-                                                        Res.string.common_keep_on_device
+                                                        Res.string.common_make_available_offline
                                                     }
                                                 ),
-                                                icon = Icons.Filled.PushPin
-                                            ) { viewModel.pinSelected(!state.allSelectedPinned) }
+                                                icon = Icons.Filled.OfflinePin
+                                            ) { viewModel.setSelectedAvailableOffline(!state.allSelectedAvailableOffline) }
                                         )
                                         add(
                                             MenuAction(
@@ -629,7 +629,6 @@ fun FilesScreen(
                                             Icons.Filled.Add
                                         },
                                         contentDescription = stringResource(Res.string.common_add),
-                                        // The container animates to primary when checked.
                                         tint = if (showAddMenu) {
                                             MaterialTheme.colorScheme.onPrimary
                                         } else {
@@ -845,10 +844,7 @@ fun FilesScreen(
     }
 }
 
-/**
- * Folder path strip. Deep trees keep only the last three folders inline; the
- * rest collapse into a leading menu so the row never grows past one line.
- */
+/** Deep trees keep only the last three folders inline, so the row never grows past one line. */
 @Composable
 private fun Breadcrumbs(
     crumbs: List<FolderCrumb>,
@@ -1127,10 +1123,6 @@ private fun SortMenu(
     }
 }
 
-/**
- * Bridges the picker's synchronous tree callbacks to the suspending
- * repository by caching each level as it is browsed.
- */
 @Composable
 internal fun FolderPickerHost(
     title: String,
@@ -1192,11 +1184,7 @@ private const val FAB_SCROLL_THRESHOLD = 6f
 
 private val SORT_ICON_SIZE = 18.dp
 
-/**
- * Brief tint so a file reached from search is findable in a long list. Both
- * item shapes paint their own background, so this draws over them rather than
- * behind, where it would never be seen.
- */
+/** Draws over the item, since both item shapes paint their own background. */
 @Composable
 private fun Modifier.focusHighlight(active: Boolean): Modifier {
     val alpha by animateFloatAsState(
