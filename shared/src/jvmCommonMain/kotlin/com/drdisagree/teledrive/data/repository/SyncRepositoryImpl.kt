@@ -111,12 +111,36 @@ class SyncRepositoryImpl(
         }
 
         val pendingDeletes = pendingDeleteDao.messageIdsIn(chatId).toSet()
+        val result = indexChat(chatId, incremental, pendingDeletes)
+        return finishSync(
+            chatId = chatId,
+            seenMessageIds = result.seenMessageIds,
+            inserted = result.inserted,
+            updated = result.updated,
+            locked = result.locked,
+            partial = incremental || result.reachedKnown
+        )
+    }
+
+    private data class IndexResult(
+        val seenMessageIds: Set<Long>,
+        val inserted: Int,
+        val updated: Int,
+        val locked: Int,
+        val reachedKnown: Boolean
+    )
+
+    private suspend fun indexChat(
+        chatId: Long,
+        incremental: Boolean,
+        pendingDeletes: Set<Long>
+    ): IndexResult {
+        val seenMessageIds = mutableSetOf<Long>()
         val folderCache = mutableMapOf<String, String?>()
         SafeLog.d(TAG, "Sync start chat=$chatId incremental=$incremental")
         var inserted = 0
         var updated = 0
         var locked = 0
-        val seenMessageIds = mutableSetOf<Long>()
         var fromMessageId = 0L
         var pages = 0
 
@@ -161,17 +185,13 @@ class SyncRepositoryImpl(
                 }
             }
             if (reachedKnown) {
-                return finishSync(
-                    chatId, seenMessageIds, inserted, updated, locked, partial = true
-                )
+                return IndexResult(seenMessageIds, inserted, updated, locked, true)
             }
             if (page.nextFromMessageId == 0L) break
             fromMessageId = page.nextFromMessageId
         }
 
-        return finishSync(
-            chatId, seenMessageIds, inserted, updated, locked, partial = incremental
-        )
+        return IndexResult(seenMessageIds, inserted, updated, locked, false)
     }
 
     private suspend fun finishSync(

@@ -629,6 +629,7 @@ class DesktopTelegramClient(
         }
     }
 
+
     /**
      * A channel counts as the drive when it carries the marker, or when it is
      * an own private channel with the drive title whose description never took.
@@ -1060,15 +1061,12 @@ class DesktopTelegramClient(
         return document.minithumbnail?.data
     }
 
-    private suspend fun remoteFile(remoteFileId: String): TdApi.File = try {
-        send(TdApi.GetRemoteFile(remoteFileId, TdApi.FileTypeDocument()))
-    } catch (documentFailure: TelegramException) {
-        try {
+    private suspend fun remoteFile(remoteFileId: String): TdApi.File =
+        if (isPhotoRemoteId(remoteFileId)) {
             send(TdApi.GetRemoteFile(remoteFileId, TdApi.FileTypePhoto()))
-        } catch (_: TelegramException) {
-            throw documentFailure
+        } else {
+            send(TdApi.GetRemoteFile(remoteFileId, TdApi.FileTypeDocument()))
         }
-    }
 
     override suspend fun resolveFile(remoteFileId: String): TelegramFileInfo =
         remoteFile(remoteFileId).toInfo()
@@ -1247,7 +1245,7 @@ class DesktopTelegramClient(
         miniThumbnail: ByteArray?
     ): RemoteDocument? {
         val remote = file.remote ?: return null
-        if (remote.id.isNullOrEmpty()) return null
+        if (remote.uniqueId.isNullOrEmpty() || remote.id.isNullOrEmpty()) return null
         return RemoteDocument(
             chatId = chatId,
             messageId = id,

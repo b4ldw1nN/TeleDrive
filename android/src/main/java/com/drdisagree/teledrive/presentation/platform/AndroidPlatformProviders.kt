@@ -28,7 +28,6 @@ import com.drdisagree.teledrive.core.permissions.openAppSettings
 import com.drdisagree.teledrive.domain.model.AppTheme
 import com.drdisagree.teledrive.domain.model.UserPreferences
 import com.drdisagree.teledrive.domain.repository.SettingsRepository
-import com.drdisagree.teledrive.presentation.applock.requireDeviceOwner
 import com.drdisagree.teledrive.presentation.common.openLink
 import com.drdisagree.teledrive.presentation.common.shareLocalFiles
 import com.drdisagree.teledrive.presentation.components.FileSystemFolderPickerDialog
@@ -151,18 +150,6 @@ fun ProvidePlatformActions(content: @Composable () -> Unit) {
         }
     }
 
-    val deviceOwnerGate = remember(activity) {
-        DeviceOwnerGate { title, subtitle, onDenied, onConfirmed ->
-            requireDeviceOwner(
-                activity = activity as? FragmentActivity,
-                title = title,
-                subtitle = subtitle,
-                onDenied = onDenied,
-                onConfirmed = onConfirmed
-            )
-        }
-    }
-
     val standardFolders = remember {
         StandardBackupFolder.entries.map { StandardFolderOption(it.labelRes, it.path) }
     }
@@ -190,7 +177,6 @@ fun ProvidePlatformActions(content: @Composable () -> Unit) {
         LocalDeleteConsentLauncher provides deleteConsentLauncher,
         LocalPermissionRequester provides permissionRequester,
         LocalSystemScreens provides systemScreens,
-        LocalDeviceOwnerGate provides deviceOwnerGate,
         LocalAppVersion provides BuildConfig.VERSION_NAME,
         LocalPlatformScreens provides AndroidPlatformScreens,
         LocalPlatformCapabilities provides capabilities

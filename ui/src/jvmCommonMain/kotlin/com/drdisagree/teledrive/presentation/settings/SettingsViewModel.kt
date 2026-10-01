@@ -26,6 +26,7 @@ import com.drdisagree.teledrive.core.transfer.MaintenanceScheduler
 import com.drdisagree.teledrive.core.transfer.TransferScheduler
 import com.drdisagree.teledrive.data.repository.LocalDataWiper
 import com.drdisagree.teledrive.domain.model.BackupTrigger
+import com.drdisagree.teledrive.domain.model.DriveChannel
 import com.drdisagree.teledrive.domain.model.UserPreferences
 import com.drdisagree.teledrive.domain.repository.BackupRepository
 import com.drdisagree.teledrive.domain.repository.CacheRepository
@@ -39,6 +40,7 @@ import com.drdisagree.teledrive.presentation.common.UiText
 import com.drdisagree.teledrive.presentation.common.toUiText
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -170,14 +172,20 @@ class SettingsViewModel(
     }
 
     /** Backup folders belong to the active drive, not to the device. */
-    val backupFolders: StateFlow<Set<String>> = settingsRepository.preferences
+    private val activeDrive: Flow<DriveChannel?> = settingsRepository.preferences
         .map { it.storageChatId }
         .distinctUntilChanged()
         .flatMapLatest { chatId ->
             channelRepository.observeChannels().map { channels ->
-                channels.firstOrNull { it.chatId == chatId }?.backupFolders.orEmpty()
+                channels.firstOrNull { it.chatId == chatId }
             }
         }
+
+    val backupFolders: StateFlow<Set<String>> = activeDrive        .map { it?.backupFolders.orEmpty() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    val cleanupFolders: StateFlow<Set<String>> = activeDrive
+        .map { it?.cleanupFolders.orEmpty() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
     fun addBackupFolder(path: String) {
@@ -186,6 +194,31 @@ class SettingsViewModel(
 
     fun removeBackupFolder(path: String) {
         editBackupFolders { it - path }
+    }
+
+    fun setFolderCleanup(path: String, enabled: Boolean) {
+        viewModelScope.launch {
+            val chatId = settingsRepository.preferences.first().storageChatId ?: return@launch
+            val before = channelRepository.cleanupFolders(chatId)
+            val after = if (enabled) before + path else before - path
+            if (after == before) return@launch
+            channelRepository.setCleanupFolders(chatId, after)
+        }
+    }
+
+    fun lockNow() {
+        appLockManager.lockNow()
+    }
+
+    suspend fun hasAppLockPin(): Boolean = appLockManager.hasPin()
+
+    suspend fun submitAppLock(mode: AppLockMode, currentPin: String, newPin: String): Boolean {
+        if (mode != AppLockMode.SET && !appLockManager.unlockWith(currentPin)) return false
+        when (mode) {
+            AppLockMode.SET, AppLockMode.CHANGE -> appLockManager.setPin(newPin)
+            AppLockMode.TURN_OFF -> appLockManager.clearPin()
+        }
+        return true
     }
 
     private fun editBackupFolders(transform: (Set<String>) -> Set<String>) {

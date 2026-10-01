@@ -41,16 +41,7 @@ import com.drdisagree.teledrive.core.transfer.TransferErrorMessages
 import com.drdisagree.teledrive.core.transfer.TransferScheduler
 import com.drdisagree.teledrive.core.transfer.transferEngineModule
 import com.drdisagree.teledrive.core.update.UpdateChecker
-import com.drdisagree.teledrive.data.local.database.MIGRATION_10_11
-import com.drdisagree.teledrive.data.local.database.MIGRATION_1_2
-import com.drdisagree.teledrive.data.local.database.MIGRATION_2_3
-import com.drdisagree.teledrive.data.local.database.MIGRATION_3_4
-import com.drdisagree.teledrive.data.local.database.MIGRATION_4_5
-import com.drdisagree.teledrive.data.local.database.MIGRATION_5_6
-import com.drdisagree.teledrive.data.local.database.MIGRATION_6_7
-import com.drdisagree.teledrive.data.local.database.MIGRATION_7_8
-import com.drdisagree.teledrive.data.local.database.MIGRATION_8_9
-import com.drdisagree.teledrive.data.local.database.MIGRATION_9_10
+import com.drdisagree.teledrive.data.local.database.ALL_MIGRATIONS
 import com.drdisagree.teledrive.data.local.database.TeleDriveDatabase
 import com.drdisagree.teledrive.data.local.database.daosModule
 import com.drdisagree.teledrive.data.repository.LocalDataWiper
@@ -150,18 +141,7 @@ val desktopModule = module {
         Room.databaseBuilder<TeleDriveDatabase>(
             name = File(storagePaths.filesDir, "teledrive.db").absolutePath
         )
-            .addMigrations(
-                MIGRATION_1_2,
-                MIGRATION_2_3,
-                MIGRATION_3_4,
-                MIGRATION_4_5,
-                MIGRATION_5_6,
-                MIGRATION_6_7,
-                MIGRATION_7_8,
-                MIGRATION_8_9,
-                MIGRATION_9_10,
-                MIGRATION_10_11
-            )
+            .addMigrations(*ALL_MIGRATIONS)
             .setDriver(BundledSQLiteDriver())
             .setQueryCoroutineContext(Dispatchers.IO)
             .build()

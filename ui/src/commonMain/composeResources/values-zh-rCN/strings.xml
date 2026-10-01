@@ -114,8 +114,6 @@
     <string name="date_yesterday">昨天</string>
 
     <!-- App lock -->
-    <string name="lock_no_screen_lock">此设备不支持屏幕锁定，正在解锁。</string>
-    <string name="lock_prompt_title">解锁 TeleDrive</string>
     <string name="lock_screen_title">TeleDrive 已锁定</string>
     <string name="lock_too_many_attempts">尝试次数过多，请稍后再试。</string>
     <string name="lock_unlock">解锁</string>
@@ -588,6 +586,7 @@
     <string name="settings_back_new_media_instantly">立即备份新的媒体文件</string>
     <string name="settings_backup_folders_title">备份文件夹</string>
     <string name="settings_backup_interval">备份间隔</string>
+    <string name="settings_folder_delete_after_backup">备份后删除其中的文件</string>
     <string name="settings_folder_unreadable">无法直接读取该文件夹</string>
     <string name="settings_no_folders_selected">未选择任何文件夹，因此文件夹备份不会执行。从“文件”手动上传不受影响。</string>
     <string name="settings_only_charging">仅在充电时</string>
@@ -623,7 +622,6 @@
     <string name="settings_back_encryption_key">备份加密密钥</string>
     <string name="settings_block_screenshots">禁止截屏</string>
     <string name="settings_change_passphrase">更改恢复口令</string>
-    <string name="settings_confirm_removing_lock">关闭应用锁前请先验证身份</string>
     <string name="settings_encrypt_thumbnails">加密缩略图</string>
     <string name="settings_encrypt_uploads">加密上传</string>
     <string name="settings_encryption_stays_off">在设置口令前，加密保持关闭</string>
@@ -641,7 +639,6 @@
     <string name="settings_protects_cached_previews_device">使用仅存于本机的密钥保护缓存预览，无需口令，但图库会变慢。</string>
     <string name="settings_reading_hint">正在读取提示…</string>
     <string name="settings_repeat_passphrase">重复输入口令</string>
-    <string name="settings_require_fingerprint_screen_lock">需要指纹或屏幕锁</string>
     <string name="settings_required_before_encrypt">加密上传前必须先设置</string>
     <string name="settings_required_encryption_key_wrapped">加密所必需。你的密钥会用此口令封装后存入你的 Telegram 频道，以便在新设备上恢复文件。Telegram 永远不会看到该口令。</string>
     <string name="settings_restore_encryption_key">恢复加密密钥</string>

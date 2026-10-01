@@ -162,7 +162,12 @@ fun TeleDriveApp(
         ) {
             when {
                 state.loading -> LoadingState()
-                state.locked -> LockScreen(onUnlocked = viewModel::unlock)
+                state.locked -> LockScreen(
+                    lockedOut = viewModel.lockedOut,
+                    failedAttempts = viewModel.failedLockAttempts,
+                    onSubmit = viewModel::unlockWith,
+                    onRefresh = viewModel::refreshLockThrottle
+                )
                 else -> MainScaffold(
                     pendingShare = pendingShare,
                     onboardingComplete = state.onboardingComplete,

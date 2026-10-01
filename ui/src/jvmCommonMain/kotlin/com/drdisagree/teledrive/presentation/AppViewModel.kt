@@ -115,6 +115,16 @@ class AppViewModel(
 
     fun onAppStopped() = appLockManager.onAppStopped()
 
+    val lockedOut: StateFlow<Boolean> = appLockManager.lockedOut
+
+    val failedLockAttempts: StateFlow<Int> = appLockManager.failedAttempts
+
+    fun refreshLockThrottle() = appLockManager.refreshThrottle()
+
+    fun unlockWith(pin: String) {
+        viewModelScope.launch { appLockManager.unlockWith(pin) }
+    }
+
     fun onAppStarted() {
         viewModelScope.launch { appLockManager.onAppStarted() }
     }
@@ -159,8 +169,6 @@ class AppViewModel(
     fun dismissUpdate() {
         _pendingUpdate.value = null
     }
-
-    fun unlock() = appLockManager.unlock()
 
     private companion object {
         const val UPDATE_CHECK_INTERVAL_MS = 24L * 60 * 60 * 1000

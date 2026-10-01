@@ -89,6 +89,7 @@ class SettingsRepositoryImpl(
             blockScreenCapture = this[PreferenceKeys.BLOCK_SCREEN_CAPTURE]
                 ?: defaults.blockScreenCapture,
             appLockEnabled = this[PreferenceKeys.APP_LOCK_ENABLED] ?: defaults.appLockEnabled,
+            appLockPin = this[PreferenceKeys.APP_LOCK_PIN] ?: defaults.appLockPin,
             autoLockTimeoutMinutes = this[PreferenceKeys.AUTO_LOCK_TIMEOUT_MINUTES]
                 ?: defaults.autoLockTimeoutMinutes,
             encryptFiles = this[PreferenceKeys.ENCRYPT_FILES] ?: defaults.encryptFiles,
@@ -178,6 +179,7 @@ class SettingsRepositoryImpl(
         this[PreferenceKeys.TRASH_AUTO_CLEAR_DAYS] = prefs.trashAutoClearDays
         this[PreferenceKeys.BLOCK_SCREEN_CAPTURE] = prefs.blockScreenCapture
         this[PreferenceKeys.APP_LOCK_ENABLED] = prefs.appLockEnabled
+        this[PreferenceKeys.APP_LOCK_PIN] = prefs.appLockPin
         this[PreferenceKeys.AUTO_LOCK_TIMEOUT_MINUTES] = prefs.autoLockTimeoutMinutes
         this[PreferenceKeys.ENCRYPT_FILES] = prefs.encryptFiles
         this[PreferenceKeys.DELETE_AFTER_UPLOAD] = prefs.deleteAfterUpload

@@ -72,7 +72,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
 
       - name: Desktop tests
-        run: ./gradlew :desktop:test
+        run: ./gradlew :desktop:test :shared:desktopTest
 
       - name: Cache VLC natives
         uses: actions/cache@v6
@@ -103,7 +103,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
 
       - name: Desktop tests
-        run: ./gradlew :desktop:test
+        run: ./gradlew :desktop:test :shared:desktopTest
 
       - name: Package .deb
         run: ./gradlew :desktop:packageDebUser
@@ -133,7 +133,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
 
       - name: Desktop tests
-        run: ./gradlew :desktop:test
+        run: ./gradlew :desktop:test :shared:desktopTest
 
       - name: Package .dmg
         run: ./gradlew :desktop:packageDmg

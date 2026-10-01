@@ -13,6 +13,7 @@ data class StorageChannelEntity(
     @PrimaryKey val chatId: Long,
     val title: String,
     val backupFolders: String = "",
+    val cleanupFolders: String = "",
     val photoPath: String? = null,
     /** Set once the starting exclusions were added, so removals stay removed. */
     val defaultsSeeded: Boolean = false,

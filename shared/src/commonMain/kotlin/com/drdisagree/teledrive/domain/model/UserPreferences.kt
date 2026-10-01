@@ -17,6 +17,7 @@ data class UserPreferences(
     val trashAutoClearDays: Int = 30,
 
     val appLockEnabled: Boolean = false,
+    val appLockPin: String = "",
     val blockScreenCapture: Boolean = false,
     val autoLockTimeoutMinutes: Int = 5,
     val encryptFiles: Boolean = false,

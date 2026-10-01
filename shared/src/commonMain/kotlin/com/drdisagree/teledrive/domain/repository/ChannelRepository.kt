@@ -41,4 +41,8 @@ interface ChannelRepository {
     suspend fun backupFolders(chatId: Long): Set<String>
 
     suspend fun setBackupFolders(chatId: Long, folders: Set<String>)
+
+    suspend fun cleanupFolders(chatId: Long): Set<String>
+
+    suspend fun setCleanupFolders(chatId: Long, folders: Set<String>)
 }

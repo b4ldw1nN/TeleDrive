@@ -143,8 +143,6 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
     implementation(libs.telephoto.zoomable.coil)
-
-    implementation(libs.androidx.biometric)
     implementation(libs.androidx.documentfile)
     implementation(libs.androidx.exifinterface)
     implementation(libs.zip4j)

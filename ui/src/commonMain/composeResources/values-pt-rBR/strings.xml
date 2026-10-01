@@ -125,8 +125,6 @@
     <string name="date_yesterday">Ontem</string>
 
     <!-- App lock -->
-    <string name="lock_no_screen_lock">O bloqueio de tela não está disponível neste dispositivo. Desbloqueando.</string>
-    <string name="lock_prompt_title">Desbloquear o TeleDrive</string>
     <string name="lock_screen_title">O TeleDrive está bloqueado</string>
     <string name="lock_too_many_attempts">Muitas tentativas. Tente novamente mais tarde.</string>
     <string name="lock_unlock">Desbloquear</string>
@@ -600,6 +598,7 @@
     <string name="settings_back_new_media_instantly">Fazer backup de novas mídias imediatamente</string>
     <string name="settings_backup_folders_title">Pastas de backup</string>
     <string name="settings_backup_interval">Intervalo de backup</string>
+    <string name="settings_folder_delete_after_backup">Excluir seus arquivos após o backup</string>
     <string name="settings_folder_unreadable">Essa pasta não pode ser lida diretamente</string>
     <string name="settings_no_folders_selected">Nenhuma pasta selecionada, portanto o backup de pastas não fará nada. Os envios manuais pela tela Arquivos não são afetados.</string>
     <string name="settings_only_charging">Apenas durante o carregamento</string>
@@ -635,7 +634,6 @@
     <string name="settings_back_encryption_key">Fazer backup da chave de criptografia</string>
     <string name="settings_block_screenshots">Bloquear capturas de tela</string>
     <string name="settings_change_passphrase">Alterar frase de recuperação</string>
-    <string name="settings_confirm_removing_lock">Confirme sua identidade antes de remover o bloqueio</string>
     <string name="settings_encrypt_thumbnails">Criptografar miniaturas</string>
     <string name="settings_encrypt_uploads">Criptografar envios</string>
     <string name="settings_encryption_stays_off">A criptografia fica desativada até que uma frase de recuperação seja definida</string>
@@ -653,7 +651,6 @@
     <string name="settings_protects_cached_previews_device">Protege as pré-visualizações em cache com uma chave exclusiva do dispositivo. Não precisa de frase de recuperação. A galeria fica mais lenta.</string>
     <string name="settings_reading_hint">Lendo dica…</string>
     <string name="settings_repeat_passphrase">Repetir frase de recuperação</string>
-    <string name="settings_require_fingerprint_screen_lock">Exigir impressão digital ou bloqueio de tela</string>
     <string name="settings_required_before_encrypt">Necessário antes de criptografar os envios</string>
     <string name="settings_required_encryption_key_wrapped">Necessário para criptografia. Sua chave é encapsulada com essa frase de recuperação e armazenada no seu canal do Telegram, permitindo recuperar arquivos em um novo dispositivo. O Telegram nunca tem acesso à frase.</string>
     <string name="settings_restore_encryption_key">Restaurar chave de criptografia</string>

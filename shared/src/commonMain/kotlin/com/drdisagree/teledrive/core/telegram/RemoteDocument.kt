@@ -1,9 +1,8 @@
 package com.drdisagree.teledrive.core.telegram
 
 /**
- * A document message in the storage chat, expressed without TDLib types.
- * [remoteFileId] can change between sessions; [uniqueFileId] is stable and is
- * used as the durable remote identity.
+ * [remoteFileId] is the long `RemoteFileLocation.id` that `getRemoteFile`
+ * accepts; [uniqueFileId] is the short stable id it rejects.
  */
 data class RemoteDocument(
     val chatId: Long,

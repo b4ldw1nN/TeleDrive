@@ -27,6 +27,7 @@ object PreferenceKeys {
 
     val BLOCK_SCREEN_CAPTURE = booleanPreferencesKey("block_screen_capture")
     val APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
+    val APP_LOCK_PIN = stringPreferencesKey("app_lock_pin")
     val AUTO_LOCK_TIMEOUT_MINUTES = intPreferencesKey("auto_lock_timeout_minutes")
     val ENCRYPT_FILES = booleanPreferencesKey("encrypt_files")
     val DELETE_AFTER_UPLOAD = booleanPreferencesKey("delete_after_upload")

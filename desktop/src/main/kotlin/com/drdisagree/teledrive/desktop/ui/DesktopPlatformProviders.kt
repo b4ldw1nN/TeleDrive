@@ -8,14 +8,12 @@ import androidx.compose.ui.Modifier
 import com.drdisagree.teledrive.desktop.BuildInfo
 import com.drdisagree.teledrive.desktop.files.DesktopFileRevealer
 import com.drdisagree.teledrive.presentation.platform.DeleteConsentLauncher
-import com.drdisagree.teledrive.presentation.platform.DeviceOwnerGate
 import com.drdisagree.teledrive.presentation.platform.FilePicker
 import com.drdisagree.teledrive.presentation.platform.FileSharer
 import com.drdisagree.teledrive.presentation.platform.FolderPicker
 import com.drdisagree.teledrive.presentation.platform.LocalAppIcon
 import com.drdisagree.teledrive.presentation.platform.LocalAppVersion
 import com.drdisagree.teledrive.presentation.platform.LocalDeleteConsentLauncher
-import com.drdisagree.teledrive.presentation.platform.LocalDeviceOwnerGate
 import com.drdisagree.teledrive.presentation.platform.LocalDownloadLocationConfigurable
 import com.drdisagree.teledrive.presentation.platform.LocalFilePicker
 import com.drdisagree.teledrive.presentation.platform.LocalFileRevealer
@@ -117,10 +115,6 @@ fun ProvideDesktopPlatformActions(content: @Composable () -> Unit) {
             override fun openAllFilesAccess() = Unit
         }
     }
-    val deviceOwnerGate = remember {
-        DeviceOwnerGate { _, _, _, onConfirmed -> onConfirmed() }
-    }
-
     val appIcon: @Composable (Modifier) -> Unit = { modifier ->
         Image(
             painter = painterResource(Res.drawable.ic_launcher),
@@ -140,7 +134,6 @@ fun ProvideDesktopPlatformActions(content: @Composable () -> Unit) {
         LocalDeleteConsentLauncher provides deleteConsentLauncher,
         LocalPermissionRequester provides permissionRequester,
         LocalSystemScreens provides systemScreens,
-        LocalDeviceOwnerGate provides deviceOwnerGate,
         LocalAppVersion provides BuildInfo.VERSION,
         LocalDownloadLocationConfigurable provides true,
         LocalPlatformScreens provides DesktopPlatformScreens,

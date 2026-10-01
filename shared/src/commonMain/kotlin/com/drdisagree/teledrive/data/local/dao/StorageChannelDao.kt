@@ -28,6 +28,9 @@ interface StorageChannelDao {
     @Query("UPDATE storage_channels SET backupFolders = :folders WHERE chatId = :chatId")
     suspend fun setBackupFolders(chatId: Long, folders: String)
 
+    @Query("UPDATE storage_channels SET cleanupFolders = :folders WHERE chatId = :chatId")
+    suspend fun setCleanupFolders(chatId: Long, folders: String)
+
     @Query("UPDATE storage_channels SET remoteFileCount = :count WHERE chatId = :chatId")
     suspend fun setRemoteFileCount(chatId: Long, count: Int)
 

@@ -7,8 +7,10 @@ import com.drdisagree.teledrive.core.dispatchers.DispatcherProvider
 import com.drdisagree.teledrive.core.files.AppStoragePaths
 import com.drdisagree.teledrive.core.files.Hashing
 import com.drdisagree.teledrive.core.files.MimeTypes
+import com.drdisagree.teledrive.core.files.PathScope
 import com.drdisagree.teledrive.core.media.MediaMetadataExtractor
 import com.drdisagree.teledrive.core.transfer.BackupSessionTracker
+import com.drdisagree.teledrive.core.transfer.StoredContentIndex
 import com.drdisagree.teledrive.data.local.dao.BackupDao
 import com.drdisagree.teledrive.data.local.dao.FileDao
 import com.drdisagree.teledrive.data.local.dao.TransferDao
@@ -105,15 +107,23 @@ class BackupRepositoryImpl(
                 .forEach { candidates.add(it) }
         }
 
-        if (candidates.isEmpty() && (unreadable > 0 || storageUnreadable())) {
+        val distinct = candidates.distinctBy { it.absolutePath }
+
+        if (distinct.isEmpty() && (unreadable > 0 || storageUnreadable())) {
             return AppResult.Failure(AppError.BackupFoldersUnreadable)
         }
+
+        val hashes = mutableMapOf<String, String?>()
+        fun hashOf(file: File): String? =
+            hashes.getOrPut(file.absolutePath) { Hashing.sha256(file) }
+
+        val storedBySize = StoredContentIndex.bySize(fileDao.liveStoredContent(activeChatId))
 
         var totalBytes = 0L
         var skipped = 0
         val reasons = mutableMapOf<BackupDecision, Int>()
         val toBackup = mutableListOf<File>()
-        for (candidate in candidates) {
+        for (candidate in distinct) {
             if (backupDao.recordByPath(candidate.absolutePath) == null &&
                 (adoptLinkedUpload(candidate) ||
                         reviveTrashedUpload(candidate) ||
@@ -137,9 +147,10 @@ class BackupRepositoryImpl(
                         it.sizeBytes, it.modifiedAt, it.contentHash
                     )
                 },
+                storedHashes = StoredContentIndex.hashesFor(candidate, storedBySize),
                 exclusions = exclusions,
                 maxFileSizeBytes = maxSizeBytes,
-                contentHashProvider = { Hashing.sha256(candidate) }
+                contentHashProvider = { hashOf(candidate) }
             )
             if (decision == BackupDecision.BACKUP) {
                 toBackup.add(candidate)
@@ -153,7 +164,7 @@ class BackupRepositoryImpl(
         if (toBackup.isEmpty()) {
             SafeLog.d(
                 TAG,
-                "Backup scan: nothing to do, $skipped of ${candidates.size} skipped, " +
+                "Backup scan: nothing to do, $skipped of ${distinct.size} skipped, " +
                         "reasons=$reasons"
             )
             return AppResult.Success(null)
@@ -362,7 +373,7 @@ class BackupRepositoryImpl(
         for (transfer in transferDao.bySession(session.id)) {
             if (transfer.state.isTerminal) continue
             val sourcePath = transfer.fileId?.let { fileDao.byId(it)?.localPath } ?: continue
-            if (folders.none { isInsideFolder(sourcePath, it) }) {
+            if (folders.none { PathScope.inside(sourcePath, it) }) {
                 cancelTransfer(transfer)
                 dropped++
             }
@@ -376,11 +387,6 @@ class BackupRepositoryImpl(
     private suspend fun cancelTransfer(transfer: TransferEntity) {
         transferDao.setState(transfer.id, TransferState.CANCELLED, System.currentTimeMillis())
         transfer.fileId?.let { fileDao.setBackupStateIfLocalOnly(it, BackupState.NONE) }
-    }
-
-    private fun isInsideFolder(path: String, folder: String): Boolean {
-        val root = folder.trimEnd('/')
-        return path == root || path.startsWith("$root/")
     }
 
     override suspend fun refreshActiveSession() {

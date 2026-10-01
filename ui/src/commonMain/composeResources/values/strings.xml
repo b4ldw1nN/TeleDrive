@@ -125,8 +125,16 @@
     <string name="date_yesterday">Yesterday</string>
 
     <!-- App lock -->
-    <string name="lock_no_screen_lock">Screen lock is not available on this device. Unlocking.</string>
-    <string name="lock_prompt_title">Unlock TeleDrive</string>
+    <string name="lock_backspace">Delete last digit</string>
+    <string name="lock_current_pin">Current PIN</string>
+    <string name="lock_keypad_clear">Clear</string>
+    <string name="lock_new_pin">New PIN</string>
+    <string name="lock_pins_do_not_match">The two PINs do not match</string>
+    <string name="lock_pin_repeat">Repeat PIN</string>
+    <string name="lock_pin_too_short">Use at least 4 digits</string>
+    <string name="lock_set_pin">Set a PIN</string>
+    <string name="lock_turn_off">Turn lock off</string>
+    <string name="lock_wrong_pin">Wrong PIN</string>
     <string name="lock_screen_title">TeleDrive is locked</string>
     <string name="lock_too_many_attempts">Too many attempts. Try again later.</string>
     <string name="lock_unlock">Unlock</string>
@@ -444,6 +452,7 @@
     <string name="preview_unarchived">Unarchived</string>
     <string name="preview_unhidden">Unhidden</string>
 
+
     <!-- Player -->
     <string name="player_audio_track">Audio track</string>
     <string name="player_subtitles">Subtitles</string>
@@ -600,6 +609,7 @@
     <string name="settings_back_new_media_instantly">Back up new media instantly</string>
     <string name="settings_backup_folders_title">Backup folders</string>
     <string name="settings_backup_interval">Backup interval</string>
+    <string name="settings_folder_delete_after_backup">Delete its files after backup</string>
     <string name="settings_folder_unreadable">That folder cannot be read directly</string>
     <string name="settings_no_folders_selected">No folders selected, so folder backup does nothing. Manual uploads from Files are unaffected.</string>
     <string name="settings_only_charging">Only while charging</string>
@@ -631,11 +641,11 @@
 
     <!-- Settings: security -->
     <string name="settings_app_lock">App lock</string>
+    <string name="settings_app_lock_pin_set_summary">A PIN set. A fingerprint registered on this phone cannot open the app</string>
     <string name="settings_auto_lock">Auto-lock after</string>
     <string name="settings_back_encryption_key">Back up encryption key</string>
     <string name="settings_block_screenshots">Block screenshots</string>
     <string name="settings_change_passphrase">Change recovery passphrase</string>
-    <string name="settings_confirm_removing_lock">Confirm it is you before removing the lock</string>
     <string name="settings_encrypt_thumbnails">Encrypt thumbnails</string>
     <string name="settings_encrypt_uploads">Encrypt uploads</string>
     <string name="settings_encryption_stays_off">Encryption stays off until a passphrase is set</string>
@@ -653,7 +663,7 @@
     <string name="settings_protects_cached_previews_device">Protects cached previews with a device-only key. No passphrase needed. Slower gallery.</string>
     <string name="settings_reading_hint">Reading hint…</string>
     <string name="settings_repeat_passphrase">Repeat passphrase</string>
-    <string name="settings_require_fingerprint_screen_lock">Require fingerprint or screen lock</string>
+    <string name="settings_require_pin_to_open">Not set. Add a PIN to lock the app</string>
     <string name="settings_required_before_encrypt">Required before uploads can be encrypted</string>
     <string name="settings_required_encryption_key_wrapped">Required for encryption. Your key is wrapped with this passphrase and stored in your Telegram channel, so you can recover files on a new device. Telegram never sees the passphrase.</string>
     <string name="settings_restore_encryption_key">Restore encryption key</string>

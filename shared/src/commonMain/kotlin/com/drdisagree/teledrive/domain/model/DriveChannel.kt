@@ -8,6 +8,7 @@ data class DriveChannel(
     val remoteFileCount: Int,
     val storedBytes: Long,
     val backupFolders: Set<String>,
+    val cleanupFolders: Set<String> = emptySet(),
     val photoPath: String?,
     val isActive: Boolean,
     val isIndexed: Boolean,

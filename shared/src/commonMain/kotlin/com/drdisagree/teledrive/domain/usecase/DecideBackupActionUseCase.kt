@@ -22,6 +22,7 @@ class DecideBackupActionUseCase(
         candidate: EvaluateExclusionsUseCase.Candidate,
         modifiedAt: Long,
         existingRecord: ExistingRecord?,
+        storedHashes: Set<String>,
         exclusions: List<Exclusion>,
         maxFileSizeBytes: Long,
         contentHashProvider: () -> String?
@@ -41,6 +42,13 @@ class DecideBackupActionUseCase(
                 if (currentHash != null && currentHash == existingRecord.contentHash) {
                     return BackupDecision.SKIP_UNCHANGED
                 }
+            }
+        }
+
+        if (storedHashes.isNotEmpty()) {
+            val currentHash = contentHashProvider()
+            if (currentHash != null && currentHash in storedHashes) {
+                return BackupDecision.SKIP_DUPLICATE
             }
         }
         return BackupDecision.BACKUP

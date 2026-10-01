@@ -34,6 +34,13 @@ interface FileDao {
     suspend fun liveMatchesBySize(sizeBytes: Long, chatId: Long?): List<FileEntity>
 
     @Query(
+        """SELECT sizeBytes, contentHash, localPath FROM files
+            WHERE chatId IS :chatId AND trashedAt IS NULL
+              AND contentHash IS NOT NULL AND messageId IS NOT NULL"""
+    )
+    suspend fun liveStoredContent(chatId: Long?): List<StoredContent>
+
+    @Query(
         """SELECT category, COUNT(*) AS fileCount, SUM(sizeBytes) AS totalBytes
              FROM files
             WHERE chatId IS :chatId AND trashedAt IS NULL

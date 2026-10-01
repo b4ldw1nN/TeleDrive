@@ -44,10 +44,11 @@ fun SettingsSwitchRow(
     onChange: (Boolean) -> Unit,
     subtitle: String? = null,
     enabled: Boolean = true,
-    icon: ImageVector? = null
+    icon: ImageVector? = null,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(enabled = enabled) { onChange(!checked) }
             .padding(horizontal = 16.dp, vertical = 10.dp),

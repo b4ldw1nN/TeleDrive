@@ -31,10 +31,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 
-/**
- * Extends FragmentActivity because androidx BiometricPrompt requires it for
- * the app lock flow.
- */
 class MainActivity : FragmentActivity() {
 
     private val settingsRepository: SettingsRepository by inject()

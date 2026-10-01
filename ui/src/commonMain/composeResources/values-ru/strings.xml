@@ -147,8 +147,6 @@
     <string name="date_yesterday">Вчера</string>
 
     <!-- App lock -->
-    <string name="lock_no_screen_lock">Блокировка экрана недоступна на этом устройстве. Разблокировка.</string>
-    <string name="lock_prompt_title">Разблокировать TeleDrive</string>
     <string name="lock_screen_title">TeleDrive заблокирован</string>
     <string name="lock_too_many_attempts">Слишком много попыток. Попробуйте позже.</string>
     <string name="lock_unlock">Разблокировать</string>
@@ -622,6 +620,7 @@
     <string name="settings_back_new_media_instantly">Мгновенный бэкап новых медиафайлов</string>
     <string name="settings_backup_folders_title">Папки для копирования</string>
     <string name="settings_backup_interval">Интервал бэкапа</string>
+    <string name="settings_folder_delete_after_backup">Удалять его файлы после бэкапа</string>
     <string name="settings_folder_unreadable">Эта папка недоступна для прямого чтения</string>
     <string name="settings_no_folders_selected">Папки не выбраны, автобэкап ничего не делает. Ручные загрузки из Файлов работают как обычно.</string>
     <string name="settings_only_charging">Только при зарядке</string>
@@ -657,7 +656,6 @@
     <string name="settings_back_encryption_key">Сохранить ключ шифрования</string>
     <string name="settings_block_screenshots">Запрет скриншотов</string>
     <string name="settings_change_passphrase">Сменить кодовую фразу</string>
-    <string name="settings_confirm_removing_lock">Подтвердите личность перед снятием блокировки</string>
     <string name="settings_encrypt_thumbnails">Шифровать миниатюры</string>
     <string name="settings_encrypt_uploads">Шифровать загружаемое</string>
     <string name="settings_encryption_stays_off">Шифрование отключено до установки кодовой фразы</string>
@@ -675,7 +673,6 @@
     <string name="settings_protects_cached_previews_device">Защищает кэшированные превью ключом устройства. Фраза не требуется. Галерея грузится медленнее.</string>
     <string name="settings_reading_hint">Чтение подсказки…</string>
     <string name="settings_repeat_passphrase">Повторите кодовую фразу</string>
-    <string name="settings_require_fingerprint_screen_lock">Требовать отпечаток или блокировку экрана</string>
     <string name="settings_required_before_encrypt">Требуется перед включением шифрования загрузок</string>
     <string name="settings_required_encryption_key_wrapped">Требуется для шифрования. Ключ защищен этой фразой и сохранен в канале Telegram для восстановления на новом устройстве. Telegram не знает фразу.</string>
     <string name="settings_restore_encryption_key">Восстановить ключ шифрования</string>

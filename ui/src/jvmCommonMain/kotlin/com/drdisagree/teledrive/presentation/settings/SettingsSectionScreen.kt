@@ -33,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +68,7 @@ import com.drdisagree.teledrive.resources.lock_timeout_labels
 import com.drdisagree.teledrive.resources.rebuild_indexed_files
 import com.drdisagree.teledrive.resources.settings_add_another_folder
 import com.drdisagree.teledrive.resources.settings_app_lock
+import com.drdisagree.teledrive.resources.settings_app_lock_pin_set_summary
 import com.drdisagree.teledrive.resources.settings_archived_shortcut
 import com.drdisagree.teledrive.resources.settings_auto_clear_trash
 import com.drdisagree.teledrive.resources.settings_auto_lock
@@ -87,7 +89,6 @@ import com.drdisagree.teledrive.resources.settings_clear_cache_title
 import com.drdisagree.teledrive.resources.settings_clear_thumbnails_action
 import com.drdisagree.teledrive.resources.settings_clear_thumbnails_title
 import com.drdisagree.teledrive.resources.settings_compact_layout
-import com.drdisagree.teledrive.resources.settings_confirm_removing_lock
 import com.drdisagree.teledrive.resources.settings_debug_logging
 import com.drdisagree.teledrive.resources.settings_dynamic_color
 import com.drdisagree.teledrive.resources.settings_encrypt_thumbnails
@@ -98,6 +99,7 @@ import com.drdisagree.teledrive.resources.settings_failures
 import com.drdisagree.teledrive.resources.settings_files_folders_skipped_backup
 import com.drdisagree.teledrive.resources.settings_files_sealed_leaving_device
 import com.drdisagree.teledrive.resources.settings_files_stay_telegram_channel
+import com.drdisagree.teledrive.resources.settings_folder_delete_after_backup
 import com.drdisagree.teledrive.resources.settings_folder_unreadable
 import com.drdisagree.teledrive.resources.settings_free_up_space_title
 import com.drdisagree.teledrive.resources.settings_gallery_previews_regenerated_browse
@@ -128,7 +130,7 @@ import com.drdisagree.teledrive.resources.settings_recent_files_subtitle
 import com.drdisagree.teledrive.resources.settings_remove
 import com.drdisagree.teledrive.resources.settings_remove_backup_folder
 import com.drdisagree.teledrive.resources.settings_removes_session_stored_api
-import com.drdisagree.teledrive.resources.settings_require_fingerprint_screen_lock
+import com.drdisagree.teledrive.resources.settings_require_pin_to_open
 import com.drdisagree.teledrive.resources.settings_required_before_encrypt
 import com.drdisagree.teledrive.resources.settings_restore_encryption_key
 import com.drdisagree.teledrive.resources.settings_restores_file_list
@@ -174,7 +176,6 @@ import com.drdisagree.teledrive.resources.settings_free_up_none
 import com.drdisagree.teledrive.resources.settings_free_up_subtitle
 import com.drdisagree.teledrive.presentation.platform.LocalDeleteConsentLauncher
 import com.drdisagree.teledrive.presentation.platform.LocalStandardFolders
-import com.drdisagree.teledrive.presentation.platform.LocalDeviceOwnerGate
 import com.drdisagree.teledrive.presentation.platform.LocalFolderPicker
 import com.drdisagree.teledrive.presentation.platform.LocalPlatformCapabilities
 import com.drdisagree.teledrive.presentation.platform.PickResult
@@ -510,6 +511,7 @@ private fun BackupSection(
     SettingsSectionTitle(stringResource(Res.string.settings_backup_folders_title))
 
     val backupFolders by viewModel.backupFolders.collectAsStateWithLifecycle()
+    val cleanupFolders by viewModel.cleanupFolders.collectAsStateWithLifecycle()
 
     if (prefs.autoBackupEnabled && backupFolders.isEmpty()) {
         Surface(
@@ -534,11 +536,12 @@ private fun BackupSection(
     val customFolders = backupFolders.filterNot { it in standardPaths }
     SettingsGroup {
         standardFolders.forEach { folder ->
+            val tracked = folder.path in backupFolders
             add {
                 SettingsSwitchRow(
                     title = stringResource(folder.label),
                     subtitle = folder.path,
-                    checked = folder.path in backupFolders,
+                    checked = tracked,
                     onChange = { checked ->
                         if (checked) {
                             viewModel.addBackupFolder(folder.path)
@@ -546,6 +549,12 @@ private fun BackupSection(
                             viewModel.removeBackupFolder(folder.path)
                         }
                     }
+                )
+            }
+            add(visible = tracked) {
+                FolderCleanupRow(
+                    checked = folder.path in cleanupFolders,
+                    onChange = { viewModel.setFolderCleanup(folder.path, it) }
                 )
             }
         }
@@ -557,6 +566,12 @@ private fun BackupSection(
                     onClick = { folderToRemove = folder }
                 )
             }
+            add {
+                FolderCleanupRow(
+                    checked = folder in cleanupFolders,
+                    onChange = { viewModel.setFolderCleanup(folder, it) }
+                )
+            }
         }
         add {
             SettingsClickRow(
@@ -566,6 +581,16 @@ private fun BackupSection(
             )
         }
     }
+}
+
+@Composable
+private fun FolderCleanupRow(checked: Boolean, onChange: (Boolean) -> Unit) {
+    SettingsSwitchRow(
+        title = stringResource(Res.string.settings_folder_delete_after_backup),
+        checked = checked,
+        onChange = onChange,
+        modifier = Modifier.padding(start = 32.dp)
+    )
 }
 
 @Composable
@@ -719,10 +744,8 @@ private fun StorageSection(
 private fun SecuritySection(state: SettingsUiState, viewModel: SettingsViewModel) {
     val encryptionOffMessage = UiText.Resource(Res.string.settings_encryption_stays_off)
     val prefs = state.preferences
-    val deviceOwnerGate = LocalDeviceOwnerGate.current
+    val scope = rememberCoroutineScope()
     val keyBackupWorking by viewModel.keyBackupWorking.collectAsStateWithLifecycle()
-    val lockPromptTitle = stringResource(Res.string.settings_turn_off_app_lock)
-    val lockPromptSubtitle = stringResource(Res.string.settings_confirm_removing_lock)
     var showLockTimeoutDialog by remember { mutableStateOf(false) }
     var showKeyBackupDialog by remember { mutableStateOf(false) }
     var showKeyRestoreDialog by remember { mutableStateOf(false) }
@@ -783,27 +806,39 @@ private fun SecuritySection(state: SettingsUiState, viewModel: SettingsViewModel
     }
 
     val capabilities = LocalPlatformCapabilities.current
+    var lockDialog by remember { mutableStateOf<AppLockMode?>(null) }
+    var hasPin by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { hasPin = viewModel.hasAppLockPin() }
+
+    lockDialog?.let { mode ->
+        AppLockDialog(
+            mode = mode,
+            onSubmit = { current, new -> viewModel.submitAppLock(mode, current, new) },
+            onDismiss = {
+                lockDialog = null
+                scope.launch { hasPin = viewModel.hasAppLockPin() }
+            }
+        )
+    }
+
     SettingsGroup {
         add(visible = capabilities.supportsAppLock) {
-            SettingsSwitchRow(
+            SettingsClickRow(
                 title = stringResource(Res.string.settings_app_lock),
-                subtitle = stringResource(Res.string.settings_require_fingerprint_screen_lock),
-                checked = prefs.appLockEnabled,
-                onChange = { value ->
-                    if (value) {
-                        viewModel.update { it.copy(appLockEnabled = true) }
-                    } else {
-                        deviceOwnerGate.require(
-                            title = lockPromptTitle,
-                            subtitle = lockPromptSubtitle,
-                            onDenied = { error ->
-                                error?.let { viewModel.notify(UiText.Plain(it)) }
-                            }
-                        ) {
-                            viewModel.update { it.copy(appLockEnabled = false) }
-                        }
-                    }
+                subtitle = if (hasPin) {
+                    stringResource(Res.string.settings_app_lock_pin_set_summary)
+                } else {
+                    stringResource(Res.string.settings_require_pin_to_open)
+                },
+                onClick = {
+                    lockDialog = if (hasPin) AppLockMode.CHANGE else AppLockMode.SET
                 }
+            )
+        }
+        add(visible = capabilities.supportsAppLock && hasPin) {
+            SettingsClickRow(
+                title = stringResource(Res.string.settings_turn_off_app_lock),
+                onClick = { lockDialog = AppLockMode.TURN_OFF }
             )
         }
         add(visible = capabilities.supportsAppLock && prefs.appLockEnabled) {

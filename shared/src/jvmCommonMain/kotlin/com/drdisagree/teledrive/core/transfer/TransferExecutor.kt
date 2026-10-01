@@ -29,6 +29,7 @@ import com.drdisagree.teledrive.domain.model.BackupState
 import com.drdisagree.teledrive.domain.model.TransferStage
 import com.drdisagree.teledrive.domain.model.TransferState
 import com.drdisagree.teledrive.domain.model.TransferType
+import com.drdisagree.teledrive.domain.repository.ChannelRepository
 import com.drdisagree.teledrive.domain.repository.SettingsRepository
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
@@ -64,6 +65,7 @@ class TransferExecutor(
     private val downloadWriter: DownloadWriter,
     private val fileImporter: FileImporter,
     private val settingsRepository: SettingsRepository,
+    private val channelRepository: ChannelRepository,
     private val filePartDao: FilePartDao,
     private val partUploader: PartUploader,
     private val partDownloader: PartDownloader,
@@ -549,9 +551,6 @@ class TransferExecutor(
 
     /**
      * Frees the source now the bytes are stored remotely. A staged import is
-     * always dropped because the app made that copy itself. The user's own file
-     * only goes when the setting asks for it, the file is not kept offline, and
-     * it still hashes to what was uploaded, so a file edited mid-upload stays.
      */
     private suspend fun releaseLocalCopy(
         type: TransferType,
@@ -565,16 +564,33 @@ class TransferExecutor(
             return
         }
         if (type != TransferType.BACKUP) return
-        if (!settingsRepository.preferences.first().deleteAfterUpload) return
         if (fileDao.isKeptOffline(entity.id)) return
 
-        val source = File(localPath)
-        if (!source.isFile || source.length() != entity.sizeBytes) return
-        if (source.length() <= EAGER_HASH_LIMIT &&
-            (contentHash == null || Hashing.sha256(source) != contentHash)
-        ) {
+        val stored = fileDao.byId(entity.id) ?: return
+        val remoteCopyStored = LocalCopyRelease.remoteCopyStored(
+            state = stored.backupState,
+            messageId = stored.messageId,
+            remoteFileId = stored.remoteFileId,
+            remoteUniqueId = stored.remoteUniqueId
+        )
+        if (!remoteCopyStored) return
+
+        val prefs = settingsRepository.preferences.first()
+        val cleanupFolders = (stored.chatId ?: prefs.storageChatId)
+            ?.let { channelRepository.cleanupFolders(it) }
+            .orEmpty()
+        if (!LocalCopyRelease.cleanupRequested(prefs.deleteAfterUpload, cleanupFolders, localPath)) {
             return
         }
+
+        val unchanged = LocalCopyRelease.localFileUnchanged(
+            file = File(localPath),
+            uploadedSizeBytes = stored.sizeBytes,
+            uploadedHash = contentHash,
+            hashOf = Hashing::sha256
+        )
+        if (!unchanged) return
+
         val cleanup = localCopyDeleter.delete(listOf(localPath))
         if (cleanup.deletedCount > 0) fileDao.setLocalPath(entity.id, null)
     }

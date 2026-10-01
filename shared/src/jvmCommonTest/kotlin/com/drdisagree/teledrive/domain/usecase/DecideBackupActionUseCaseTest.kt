@@ -25,6 +25,7 @@ class DecideBackupActionUseCaseTest {
             candidate = candidate(),
             modifiedAt = 100,
             existingRecord = null,
+            storedHashes = emptySet(),
             exclusions = emptyList(),
             maxFileSizeBytes = 0,
             contentHashProvider = { error("hash must not be computed for new files") }
@@ -39,6 +40,7 @@ class DecideBackupActionUseCaseTest {
             candidate = candidate(size = 1000),
             modifiedAt = 100,
             existingRecord = DecideBackupActionUseCase.ExistingRecord(1000, 100, "abc"),
+            storedHashes = emptySet(),
             exclusions = emptyList(),
             maxFileSizeBytes = 0,
             contentHashProvider = { hashed = true; "abc" }
@@ -54,6 +56,7 @@ class DecideBackupActionUseCaseTest {
             candidate = candidate(size = 1000),
             modifiedAt = 200,
             existingRecord = DecideBackupActionUseCase.ExistingRecord(1000, 100, "abc"),
+            storedHashes = emptySet(),
             exclusions = emptyList(),
             maxFileSizeBytes = 0,
             contentHashProvider = { hashed = true; "abc" }
@@ -68,6 +71,7 @@ class DecideBackupActionUseCaseTest {
             candidate = candidate(size = 1000),
             modifiedAt = 200,
             existingRecord = DecideBackupActionUseCase.ExistingRecord(1000, 100, "abc"),
+            storedHashes = emptySet(),
             exclusions = emptyList(),
             maxFileSizeBytes = 0,
             contentHashProvider = { "different" }
@@ -81,6 +85,7 @@ class DecideBackupActionUseCaseTest {
             candidate = candidate(size = 2000),
             modifiedAt = 200,
             existingRecord = DecideBackupActionUseCase.ExistingRecord(1000, 100, "abc"),
+            storedHashes = emptySet(),
             exclusions = emptyList(),
             maxFileSizeBytes = 0,
             contentHashProvider = { error("hash not needed when size changed") }
@@ -94,6 +99,7 @@ class DecideBackupActionUseCaseTest {
             candidate = candidate(),
             modifiedAt = 100,
             existingRecord = null,
+            storedHashes = emptySet(),
             exclusions = listOf(
                 Exclusion("id", ExclusionType.EXTENSION, "jpg", enabled = true, createdAt = 0)
             ),
@@ -109,6 +115,7 @@ class DecideBackupActionUseCaseTest {
             candidate = candidate(size = 5000),
             modifiedAt = 100,
             existingRecord = null,
+            storedHashes = emptySet(),
             exclusions = emptyList(),
             maxFileSizeBytes = 4000,
             contentHashProvider = { null }
@@ -122,10 +129,83 @@ class DecideBackupActionUseCaseTest {
             candidate = candidate(size = Long.MAX_VALUE / 2),
             modifiedAt = 100,
             existingRecord = null,
+            storedHashes = emptySet(),
             exclusions = emptyList(),
             maxFileSizeBytes = 0,
             contentHashProvider = { null }
         )
         assertEquals(BackupDecision.BACKUP, decision)
+    }
+
+    @Test
+    fun `content the drive already holds is not uploaded again`() {
+        val decision = useCase(
+            candidate = candidate(size = 1000),
+            modifiedAt = 100,
+            existingRecord = null,
+            storedHashes = setOf("abc"),
+            exclusions = emptyList(),
+            maxFileSizeBytes = 0,
+            contentHashProvider = { "abc" }
+        )
+        assertEquals(BackupDecision.SKIP_DUPLICATE, decision)
+    }
+
+    @Test
+    fun `an orphaned download of a stored file is not uploaded again`() {
+        val decision = useCase(
+            candidate = candidate(size = 1000),
+            modifiedAt = 500,
+            existingRecord = null,
+            storedHashes = setOf("abc"),
+            exclusions = emptyList(),
+            maxFileSizeBytes = 0,
+            contentHashProvider = { "abc" }
+        )
+        assertEquals(BackupDecision.SKIP_DUPLICATE, decision)
+    }
+
+    @Test
+    fun `same size but different content is still backed up`() {
+        val decision = useCase(
+            candidate = candidate(size = 1000),
+            modifiedAt = 100,
+            existingRecord = null,
+            storedHashes = setOf("abc"),
+            exclusions = emptyList(),
+            maxFileSizeBytes = 0,
+            contentHashProvider = { "other" }
+        )
+        assertEquals(BackupDecision.BACKUP, decision)
+    }
+
+    @Test
+    fun `nothing is hashed when the drive holds no file of that size`() {
+        val decision = useCase(
+            candidate = candidate(size = 1000),
+            modifiedAt = 100,
+            existingRecord = null,
+            storedHashes = emptySet(),
+            exclusions = emptyList(),
+            maxFileSizeBytes = 0,
+            contentHashProvider = { error("hash must not be computed without a size match") }
+        )
+        assertEquals(BackupDecision.BACKUP, decision)
+    }
+
+    @Test
+    fun `a duplicate is still skipped when it is excluded`() {
+        val decision = useCase(
+            candidate = candidate(),
+            modifiedAt = 100,
+            existingRecord = null,
+            storedHashes = setOf("abc"),
+            exclusions = listOf(
+                Exclusion("id", ExclusionType.EXTENSION, "jpg", enabled = true, createdAt = 0)
+            ),
+            maxFileSizeBytes = 0,
+            contentHashProvider = { error("exclusion is decided before hashing") }
+        )
+        assertEquals(BackupDecision.SKIP_EXCLUDED, decision)
     }
 }

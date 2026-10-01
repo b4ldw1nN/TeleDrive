@@ -4,6 +4,57 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 
+/** Drops the read-only flag now that browsed group sources are gone. */
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL("ALTER TABLE storage_channels DROP COLUMN readOnly")
+    }
+}
+
+/** Swaps the two TDLib remote ids back into their correct columns. */
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(connection: SQLiteConnection) {
+        for (table in listOf("files", "file_parts")) {
+            connection.execSQL(
+                "UPDATE $table SET remoteFileId = remoteUniqueId, " +
+                        "remoteUniqueId = remoteFileId " +
+                        "WHERE remoteFileId IS NOT NULL AND remoteUniqueId IS NOT NULL"
+            )
+        }
+    }
+}
+
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(connection: SQLiteConnection) {
+        for (table in listOf("files", "file_parts")) {
+            connection.execSQL(
+                "UPDATE $table SET remoteFileId = remoteUniqueId, " +
+                        "remoteUniqueId = remoteFileId " +
+                        "WHERE remoteFileId IS NOT NULL AND remoteUniqueId IS NOT NULL"
+            )
+        }
+    }
+}
+
+/** Marks the channels that are only browsed, never written to. */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL(
+            "ALTER TABLE storage_channels " +
+                    "ADD COLUMN readOnly INTEGER NOT NULL DEFAULT 0"
+        )
+    }
+}
+
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL(
+            "ALTER TABLE storage_channels " +
+                    "ADD COLUMN cleanupFolders TEXT NOT NULL DEFAULT ''"
+        )
+    }
+}
+
 /** Adds the device-local pin that keeps a copy out of "free up space". */
 val MIGRATION_10_11 = object : Migration(10, 11) {
     override fun migrate(connection: SQLiteConnection) {
@@ -147,3 +198,22 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         )
     }
 }
+
+
+val ALL_MIGRATIONS: Array<Migration> = arrayOf(
+    MIGRATION_1_2,
+    MIGRATION_2_3,
+    MIGRATION_3_4,
+    MIGRATION_4_5,
+    MIGRATION_5_6,
+    MIGRATION_6_7,
+    MIGRATION_7_8,
+    MIGRATION_8_9,
+    MIGRATION_9_10,
+    MIGRATION_10_11,
+    MIGRATION_11_12,
+    MIGRATION_12_13,
+    MIGRATION_13_14,
+    MIGRATION_14_15,
+    MIGRATION_15_16
+)

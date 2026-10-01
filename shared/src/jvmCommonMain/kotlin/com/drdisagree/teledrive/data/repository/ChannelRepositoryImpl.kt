@@ -222,7 +222,19 @@ class ChannelRepositoryImpl(
 
     override suspend fun setBackupFolders(chatId: Long, folders: Set<String>) {
         channelDao.setBackupFolders(chatId, folders.joinToString(FOLDER_SEPARATOR))
+        val cleanup = cleanupFolders(chatId)
+        val kept = cleanup intersect folders
+        if (kept != cleanup) channelDao.setCleanupFolders(chatId, kept.joinToString(FOLDER_SEPARATOR))
     }
+
+    override suspend fun cleanupFolders(chatId: Long): Set<String> =
+        channelDao.byId(chatId)?.cleanupFolders?.toFolderSet().orEmpty()
+
+    override suspend fun setCleanupFolders(chatId: Long, folders: Set<String>) {
+        val tracked = folders intersect backupFolders(chatId)
+        channelDao.setCleanupFolders(chatId, tracked.joinToString(FOLDER_SEPARATOR))
+    }
+
 
     /**
      * Channel pictures make drives recognizable at a glance in the picker.
@@ -262,6 +274,7 @@ class ChannelRepositoryImpl(
         remoteFileCount = remoteFileCount,
         storedBytes = channelDao.storedBytes(chatId),
         backupFolders = backupFolders.toFolderSet(),
+        cleanupFolders = cleanupFolders.toFolderSet(),
         photoPath = photoPath?.takeIf { File(it).exists() },
         isActive = chatId == activeId,
         isIndexed = lastOpenedAt > 0 || channelDao.fileCount(chatId) > 0,
